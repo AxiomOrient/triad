@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/triad-core",
+  "crates/triad-config",
+  "crates/triad-runtime",
+  "crates/triad-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+
+[workspace.metadata.release]
+tag = "v0.1.0"
+binary = "triad"
+readme = "README.md"
+consistency_report = "docs/11-consistency-report.md"
+release_checklist = "docs/15-release-readiness.md"
+install_command = "cargo install --path crates/triad-cli"
+verify_command = "cargo test --workspace"
+artifact_set = [
+  "README.md",
+  "docs/11-consistency-report.md",
+  "docs/15-release-readiness.md",
+  "schemas/",
+  "crates/",
+]
+
+[workspace.dependencies]
+anyhow = "1"
+camino = { version = "1", features = ["serde1"] }
+clap = { version = "4.5.60", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+toml = "0.8"

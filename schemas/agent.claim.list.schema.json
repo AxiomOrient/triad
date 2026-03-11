@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/agent.claim.list.schema.json",
+  "title": "Triad Agent Claim List Response",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "./envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "claim.list",
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claims"
+          ],
+          "properties": {
+            "claims": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "claim_id",
+                  "title",
+                  "status",
+                  "revision"
+                ],
+                "properties": {
+                  "claim_id": {
+                    "type": "string",
+                    "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "healthy",
+                      "needs-code",
+                      "needs-test",
+                      "needs-spec",
+                      "contradicted",
+                      "blocked"
+                    ]
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "pending_patch_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "command",
+        "data"
+      ]
+    }
+  ]
+}

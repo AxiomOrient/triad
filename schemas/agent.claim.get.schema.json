@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/agent.claim.get.schema.json",
+  "title": "Triad Agent Claim Get Response",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "./envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "claim.get",
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claim_id",
+            "title",
+            "statement",
+            "examples",
+            "invariants",
+            "revision"
+          ],
+          "properties": {
+            "claim_id": {
+              "type": "string",
+              "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+            },
+            "title": {
+              "type": "string"
+            },
+            "statement": {
+              "type": "string"
+            },
+            "examples": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "invariants": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "required": [
+        "command",
+        "data"
+      ]
+    }
+  ]
+}

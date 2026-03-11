@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/agent.verify.schema.json",
+  "title": "Triad Agent Verify Response",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "./envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "verify",
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claim_id",
+            "verdict",
+            "layers",
+            "full_workspace",
+            "evidence_ids",
+            "status_after_verify"
+          ],
+          "properties": {
+            "claim_id": {
+              "type": "string",
+              "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+            },
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail",
+                "unknown"
+              ]
+            },
+            "layers": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "unit",
+                  "contract",
+                  "integration",
+                  "probe"
+                ]
+              }
+            },
+            "full_workspace": {
+              "type": "boolean"
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "status_after_verify": {
+              "type": "string",
+              "enum": [
+                "healthy",
+                "needs-code",
+                "needs-test",
+                "needs-spec",
+                "contradicted",
+                "blocked"
+              ]
+            },
+            "pending_patch_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "command",
+        "data"
+      ]
+    }
+  ]
+}

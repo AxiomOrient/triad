@@ -1,0 +1,57 @@
+# triad derived state
+.triad/*
+!.triad/evidence.ndjson
+!.triad/patches/
+!.triad/patches/**
+.triad/cache.sqlite
+.triad/cache.sqlite-*
+.triad/runs/
+.triad/runs/**
+.triad/tmp/
+.triad/tmp/**
+
+# Rust build outputs
+/target/
+*.rs.bk
+
+# Python helper caches
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+.hypothesis/
+
+# Editor settings
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Logs and coverage artifacts
+*.log
+*.out
+*.err
+coverage/
+htmlcov/
+lcov.info
+*.profraw
+*.profdata
+tarpaulin-report.html
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Local shell tooling
+.direnv/

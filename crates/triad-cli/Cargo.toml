@@ -1,0 +1,19 @@
+[package]
+name = "triad-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "triad"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+triad-config = { path = "../triad-config" }
+triad-core = { path = "../triad-core" }
+triad-runtime = { path = "../triad-runtime" }

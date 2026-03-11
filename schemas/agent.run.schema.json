@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/agent.run.schema.json",
+  "title": "Triad Agent Run Response",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "./envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "run",
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "run_id",
+            "claim_id",
+            "summary",
+            "changed_paths",
+            "suggested_test_selectors",
+            "blocked_actions",
+            "needs_patch"
+          ],
+          "properties": {
+            "claim_id": {
+              "type": "string",
+              "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "changed_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "suggested_test_selectors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "blocked_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "needs_patch": {
+              "type": "boolean"
+            },
+            "run_id": {
+              "type": "string",
+              "pattern": "^RUN-\\d{6}$"
+            }
+          }
+        }
+      },
+      "required": [
+        "command",
+        "data"
+      ]
+    }
+  ]
+}

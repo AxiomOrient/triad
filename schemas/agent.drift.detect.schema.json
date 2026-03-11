@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/agent.drift.detect.schema.json",
+  "title": "Triad Agent Drift Detect Response",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "./envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "command": {
+          "const": "drift.detect",
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claim_id",
+            "status",
+            "reasons"
+          ],
+          "properties": {
+            "claim_id": {
+              "type": "string",
+              "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "healthy",
+                "needs-code",
+                "needs-test",
+                "needs-spec",
+                "contradicted",
+                "blocked"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fresh_evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pending_patch_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "command",
+        "data"
+      ]
+    }
+  ]
+}
