@@ -11,9 +11,9 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+camino.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-triad-config = { path = "../triad-config" }
 triad-core = { path = "../triad-core" }
-triad-runtime = { path = "../triad-runtime" }
+triad-fs = { path = "../triad-fs" }

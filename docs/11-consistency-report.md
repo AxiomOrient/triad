@@ -2,7 +2,7 @@
 
 ## Summary
 
-- PASS count: 95
+- PASS count: 35
 - FAIL count: 0
 
 ## Checks
@@ -18,39 +18,30 @@
 - PASS: document exists: docs/08-runtime-integration.md
 - PASS: document exists: docs/09-verification-and-ratchet.md
 - PASS: document exists: docs/10-implementation-blueprint.md
+- PASS: document exists: docs/11-consistency-report.md
 - PASS: document exists: docs/15-release-readiness.md
-- PASS: schema parses as JSON: schemas/envelope.schema.json
-- PASS: schema parses as JSON: schemas/agent.claim.list.schema.json
-- PASS: schema parses as JSON: schemas/agent.claim.get.schema.json
-- PASS: schema parses as JSON: schemas/agent.claim.next.schema.json
-- PASS: schema parses as JSON: schemas/agent.drift.detect.schema.json
-- PASS: schema parses as JSON: schemas/agent.run.schema.json
-- PASS: schema parses as JSON: schemas/agent.verify.schema.json
-- PASS: schema parses as JSON: schemas/agent.patch.propose.schema.json
-- PASS: schema parses as JSON: schemas/agent.patch.apply.schema.json
-- PASS: schema parses as JSON: schemas/agent.status.schema.json
-- PASS: root Cargo.toml parses and all workspace members exist
-- PASS: triad.toml parses
-- PASS: document map includes all expected docs
-- PASS: scaffold exists: .triad/evidence.ndjson
-- PASS: scaffold exists: .triad/patches
-- PASS: scaffold exists: .triad/runs
-- PASS: scaffold exists: .gitignore
-- PASS: scaffold exists: AGENTS.md
-- PASS: scaffold exists: triad.toml
-- PASS: AGENTS.md contains required rule: Work on exactly one claim per run.
-- PASS: AGENTS.md contains required rule: Never edit `spec/claims/**` directly during `work`.
-- PASS: AGENTS.md contains required rule: Do not run `git commit` or `git push`.
-- PASS: CLI skeleton includes token: Init
-- PASS: CLI skeleton includes token: Next
-- PASS: CLI skeleton includes token: Work
-- PASS: CLI skeleton includes token: Verify
-- PASS: CLI skeleton includes token: Accept
-- PASS: CLI skeleton includes token: Status
-- PASS: CLI skeleton includes token: AgentCommand
-- PASS: CLI skeleton includes token: AgentClaimCommand
-- PASS: CLI skeleton includes token: AgentDriftCommand
-- PASS: CLI skeleton includes token: AgentPatchCommand
+- PASS: schema parses as JSON: schemas/claim.schema.json
+- PASS: schema parses as JSON: schemas/evidence.schema.json
+- PASS: schema parses as JSON: schemas/claim_report.schema.json
+- PASS: schema parses as JSON: schemas/lint_report.schema.json
+- PASS: schema parses as JSON: schemas/triad_config.schema.json
+- PASS: obsolete crate removed: crates/triad-config
+- PASS: obsolete crate removed: crates/triad-runtime
+- PASS: obsolete schema removed: schemas/agent.claim.get.schema.json
+- PASS: obsolete schema removed: schemas/agent.claim.list.schema.json
+- PASS: obsolete schema removed: schemas/agent.claim.next.schema.json
+- PASS: obsolete schema removed: schemas/agent.drift.detect.schema.json
+- PASS: obsolete schema removed: schemas/agent.patch.apply.schema.json
+- PASS: obsolete schema removed: schemas/agent.patch.propose.schema.json
+- PASS: obsolete schema removed: schemas/agent.run.schema.json
+- PASS: obsolete schema removed: schemas/agent.status.schema.json
+- PASS: obsolete schema removed: schemas/agent.verify.schema.json
+- PASS: obsolete schema removed: schemas/envelope.schema.json
+- PASS: workspace members match triad-core/triad-fs/triad-cli
+- PASS: triad.toml matches minimal v2 config
+- PASS: CLI help matches current command surface
+- PASS: example claims parse via CLI lint
+- PASS: document map includes expected docs
 
 ## Verdict
 

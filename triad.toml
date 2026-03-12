@@ -1,31 +1,20 @@
-version = 1
+version = 2
 
 [paths]
 claim_dir = "spec/claims"
-docs_dir = "docs"
-state_dir = ".triad"
 evidence_file = ".triad/evidence.ndjson"
-patch_dir = ".triad/patches"
-run_dir = ".triad/runs"
-schema_dir = "schemas"
 
-[agent]
-backend = "codex"
-model = "gpt-5-codex"
-effort = "medium"
-approval_policy = "never"
-sandbox_policy = "workspace-write"
-timeout_seconds = 600
-
-[agent.codex]
-use_oss = false
+[snapshot]
+include = [
+  "src/**",
+  "tests/**",
+  "crates/**",
+  "Cargo.toml",
+  "Cargo.lock",
+]
 
 [verify]
-default_layers = ["unit", "contract", "integration"]
-full_workspace_after_accept = true
-
-[guardrails]
-forbid_direct_spec_edits = true
-forbid_git_commit = true
-forbid_git_push = true
-forbid_destructive_rm = true
+commands = [
+  "cargo test --lib",
+  "cargo test --tests",
+]

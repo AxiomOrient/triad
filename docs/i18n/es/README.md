@@ -1,35 +1,35 @@
 # triad en español
 
-[Volver al README principal](../../../README.md)
+[README principal en coreano](../../../README.md)
 
-`triad` es una CLI local-first para trabajar una pequeña necesidad a la vez, guardar prueba de verificación y evitar que un cambio generado por IA se vuelva verdad final sin revisión humana.
+`triad` es un verification kernel determinista y sin interfaz interactiva. Responde una sola pregunta:
 
-## Flujo estándar
+> ¿Este Claim es verdadero ahora mismo?
 
-```text
-next -> work -> verify -> accept
-```
+Superficie pública actual:
 
-## Inicio rápido
+- `triad-core`
+- `triad-fs`
+- `triad-cli`
+
+Comandos actuales:
+
+- `triad init`
+- `triad lint [--claim <CLAIM_ID> | --all] [--json]`
+- `triad verify --claim <CLAIM_ID> [--json]`
+- `triad report [--claim <CLAIM_ID> | --all] [--json]`
+
+Inicio rápido:
 
 ```bash
 cargo run -p triad-cli -- init
-cargo run -p triad-cli -- next
-cargo run -p triad-cli -- work REQ-auth-001
-cargo run -p triad-cli -- verify REQ-auth-001
-cargo run -p triad-cli -- status --claim REQ-auth-001
+cargo run -p triad-cli -- lint --all
+cargo run -p triad-cli -- verify --claim REQ-auth-001
+cargo run -p triad-cli -- report --all --json
 ```
 
-Si aparece un patch pendiente:
-
-```bash
-cargo run -p triad-cli -- accept --latest
-```
-
-## Leer después
+Seguir leyendo:
 
 - [Mapa de documentos](../../00-document-map.md)
-- [Workflows](../../04-workflows.md)
+- [Modelo de dominio](../../02-domain-model.md)
 - [Contrato de CLI](../../05-cli-contract.md)
-- [Integración de runtime](../../08-runtime-integration.md)
-- [Checklist de release](../../15-release-readiness.md)

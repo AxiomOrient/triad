@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/claim_report.schema.json",
+  "title": "Triad Claim Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claim_id",
+    "status",
+    "reasons",
+    "fresh_evidence_ids",
+    "stale_evidence_ids",
+    "advisory_evidence_ids",
+    "strongest_verdict"
+  ],
+  "properties": {
+    "claim_id": {
+      "type": "string",
+      "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "contradicted",
+        "blocked",
+        "stale",
+        "unsupported"
+      ]
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "fresh_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EVID-\\d{6}$"
+      }
+    },
+    "stale_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EVID-\\d{6}$"
+      }
+    },
+    "advisory_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EVID-\\d{6}$"
+      }
+    },
+    "strongest_verdict": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "pass",
+        "fail",
+        "unknown",
+        null
+      ]
+    }
+  }
+}

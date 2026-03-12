@@ -1,37 +1,41 @@
 # AGENTS.md
 
-## Workflow
+## Scope
 
-- Work on exactly one claim per run.
-- Use the standard loop only: next -> work -> verify -> accept.
-- Treat the selected claim as the only work scope for that run.
-- Never edit `spec/claims/**` directly during `work`.
-- Change spec only through patch draft creation and `accept`.
-- Keep code and tests scoped to the selected claim.
-- Prefer the smallest change that can be verified.
+- Treat `Claim` as the only canonical work unit.
+- Prefer the smallest change that preserves deterministic verification behavior.
+- Do not invent workflow or runtime surfaces that are outside the current product contract.
+
+## Current Surface
+
+- `triad-core`
+- `triad-fs`
+- `triad-cli`
+
+Current CLI commands:
+
+- `triad init`
+- `triad lint`
+- `triad verify`
+- `triad report`
 
 ## Guardrails
 
 - Do not run `git commit` or `git push`.
-- Do not remove files recursively outside an explicitly approved temporary workspace.
-- Do not modify unrelated claims.
-- Do not write unrelated docs, schemas, or config files during `work`; stay inside selected code/test scope.
-- Do not skip verification after code changes.
+- Do not modify unrelated files while changing a bounded scope.
+- Do not reintroduce `next`, `work`, `accept`, `agent`, runtime backend, or patch draft surface.
+- Do not add command-envelope schemas back into `schemas/`.
+- Keep verification deterministic: no hidden state, no heuristic ranking, no provider-specific behavior in core.
 
 ## Verification
 
-- Run targeted verification first.
-- Default verification layers are unit, contract, integration.
-- Treat probe as opt-in.
-- Record behavior changes as patch drafts, not direct spec rewrites.
-
-## Output
-
-- Human CLI may be concise.
-- Agent CLI must emit stable JSON only on stdout.
-- Agent diagnostics and errors belong on stderr, not stdout.
-- If blocked, explain the blocker explicitly and stop.
-- If malformed state or malformed claim is encountered, report the exact claim or file and the cause.
+- Run the narrowest relevant check first.
+- For code changes, prefer crate-local tests before workspace-wide checks.
+- Final repo gate is:
+  - `cargo fmt --all --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `python3 scripts/verify_artifacts.py`
 
 ## Code Quality
 

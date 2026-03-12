@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/claim.schema.json",
+  "title": "Triad Claim",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "statement",
+    "examples",
+    "invariants",
+    "notes",
+    "revision_digest"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "statement": {
+      "type": "string"
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

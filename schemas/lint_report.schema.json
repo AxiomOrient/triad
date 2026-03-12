@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/lint_report.schema.json",
+  "title": "Triad Lint Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ok",
+    "claim_count",
+    "claims",
+    "verify_commands"
+  ],
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "claim_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "claim_id",
+          "title",
+          "revision_digest"
+        ],
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "revision_digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "verify_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

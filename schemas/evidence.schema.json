@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://triad.local/schemas/evidence.schema.json",
+  "title": "Triad Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "claim_id",
+    "class",
+    "kind",
+    "verdict",
+    "verifier",
+    "claim_revision_digest",
+    "artifact_digests",
+    "command",
+    "locator",
+    "summary",
+    "provenance",
+    "created_at"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^EVID-\\d{6}$"
+    },
+    "claim_id": {
+      "type": "string",
+      "pattern": "^REQ-[a-z0-9-]+\\-\\d{3}$"
+    },
+    "class": {
+      "type": "string",
+      "enum": [
+        "hard",
+        "advisory"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "test",
+        "analysis",
+        "replay",
+        "benchmark",
+        "human",
+        "other"
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "unknown"
+      ]
+    },
+    "verifier": {
+      "type": "string"
+    },
+    "claim_revision_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "artifact_digests": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$"
+      }
+    },
+    "command": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "locator": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor",
+        "runtime",
+        "session_id",
+        "task_id",
+        "workflow_id",
+        "commit",
+        "environment_digest"
+      ],
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflow_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environment_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "created_at": {
+      "type": "string"
+    }
+  }
+}

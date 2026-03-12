@@ -1,172 +1,157 @@
+use std::collections::BTreeMap;
 use std::io::Write;
 
-use anyhow::{Result, bail};
-use triad_core::RunClaimRequest;
-
-use crate::CliRuntime;
-use crate::agent_output::{agent_claim_get_data, agent_claim_list_data, write_agent_envelope};
-use crate::cli::{
-    AcceptArgs, AgentClaimCommand, AgentCommand, AgentDriftCommand, AgentPatchCommand, Command,
-    Effort, StatusArgs, VerifyArgs, WorkArgs,
-};
-use crate::exit_codes::{
-    CliExit, exit_code_for_accept, exit_code_for_claim_summaries, exit_code_for_drift,
-    exit_code_for_next, exit_code_for_status, exit_code_for_verify, exit_code_for_work,
-};
-use crate::human_output;
-use crate::parsing::{
-    parse_claim_id, parse_optional_claim_id, parse_patch_id, resolve_accept_patch_id,
-    resolve_claim_id, resolve_verify_request,
+use anyhow::{Result, anyhow};
+use camino::Utf8Path;
+use triad_core::{Claim, ClaimId, verify_claim, verify_many};
+use triad_fs::{
+    CanonicalTriadConfig, ClaimMarkdownAdapter, CommandCapture, EvidenceNdjsonStore,
+    SnapshotAdapter,
 };
 
-pub(crate) fn dispatch_command<R: CliRuntime>(
-    runtime: &R,
+use crate::cli::{Command, LintArgs, ReportArgs, VerifyArgs};
+use crate::exit_codes::CliExit;
+use crate::output::{
+    InitOutput, LintClaimOutput, LintOutput, OutputMode, VerifyOutput, write_init, write_lint,
+    write_report, write_verify,
+};
+use crate::parsing::parse_claim_id;
+
+pub(crate) fn dispatch_command(
+    config: &CanonicalTriadConfig,
     command: Command,
     stdout: &mut impl Write,
 ) -> Result<CliExit> {
     match command {
-        Command::Next => dispatch_human_next(runtime, stdout),
-        Command::Work(args) => dispatch_human_work(runtime, args, stdout),
-        Command::Verify(args) => dispatch_human_verify(runtime, args, stdout),
-        Command::Accept(args) => dispatch_human_accept(runtime, args, stdout),
-        Command::Status(args) => dispatch_human_status(runtime, args, stdout),
-        Command::Agent(agent) => dispatch_agent_command(runtime, agent.command, stdout),
-        Command::Init(_) => bail!("init must be handled before runtime dispatch"),
+        Command::Init(_) => Err(anyhow!("init must be handled before runtime dispatch")),
+        Command::Lint(args) => dispatch_lint(config, args, stdout),
+        Command::Verify(args) => dispatch_verify(config, args, stdout),
+        Command::Report(args) => dispatch_report(config, args, stdout),
     }
 }
 
-fn dispatch_human_next<R: CliRuntime>(runtime: &R, stdout: &mut impl Write) -> Result<CliExit> {
-    let next = runtime.next_claim()?;
-    human_output::write_next(stdout, &next, &runtime.claim_load_diagnostics()?)?;
-    Ok(exit_code_for_next(&next))
-}
-
-fn dispatch_human_work<R: CliRuntime>(
-    runtime: &R,
-    args: WorkArgs,
+pub(crate) fn dispatch_init(
+    repo_root: &Utf8Path,
+    output_mode: OutputMode,
     stdout: &mut impl Write,
 ) -> Result<CliExit> {
-    let claim_id = resolve_claim_id(runtime, args.claim_id)?;
-    let report = runtime.run_claim(RunClaimRequest {
-        claim_id,
-        dry_run: args.dry_run,
-        model: args.model,
-        effort: args.effort.map(Effort::into),
-    })?;
-    human_output::write_work(stdout, &report)?;
-    Ok(exit_code_for_work(&report))
+    let output = InitOutput {
+        repo_root: repo_root.as_str().to_string(),
+        config_path: repo_root.join("triad.toml").as_str().to_string(),
+        evidence_file: repo_root
+            .join(".triad/evidence.ndjson")
+            .as_str()
+            .to_string(),
+    };
+    write_init(stdout, output_mode, &output)?;
+    Ok(CliExit::Success)
 }
 
-fn dispatch_human_verify<R: CliRuntime>(
-    runtime: &R,
+fn dispatch_lint(
+    config: &CanonicalTriadConfig,
+    args: LintArgs,
+    stdout: &mut impl Write,
+) -> Result<CliExit> {
+    let claims = load_claims(config)?;
+    let filtered = filter_claims(&claims, args.claim.as_deref())?;
+    let output = LintOutput {
+        ok: true,
+        claim_count: filtered.len(),
+        claims: filtered
+            .iter()
+            .map(|claim| LintClaimOutput {
+                claim_id: claim.id.clone(),
+                title: claim.title.clone(),
+                revision_digest: claim.revision_digest.clone(),
+            })
+            .collect(),
+        verify_commands: config.verify.commands.clone(),
+    };
+    write_lint(stdout, OutputMode::from_json_flag(args.json), &output)?;
+    Ok(CliExit::Success)
+}
+
+fn dispatch_verify(
+    config: &CanonicalTriadConfig,
     args: VerifyArgs,
     stdout: &mut impl Write,
 ) -> Result<CliExit> {
-    let report = runtime.verify_claim(resolve_verify_request(
-        runtime,
-        args.claim_id,
-        args.with_probe,
-        args.full_workspace,
-    )?)?;
-    human_output::write_verify(stdout, &report)?;
-    Ok(exit_code_for_verify(&report))
-}
+    let claims = load_claims(config)?;
+    let claim_id = parse_claim_id(&args.claim)?;
+    let claim = find_claim(&claims, &claim_id)?;
+    let artifact_digests = SnapshotAdapter::collect(&config.repo_root, &config.snapshot.include)?;
 
-fn dispatch_human_accept<R: CliRuntime>(
-    runtime: &R,
-    args: AcceptArgs,
-    stdout: &mut impl Write,
-) -> Result<CliExit> {
-    let patch_id = resolve_accept_patch_id(runtime, args)?;
-    let report = runtime.apply_patch(&patch_id)?;
-    human_output::write_accept(stdout, &report)?;
-    Ok(exit_code_for_accept(&report))
-}
-
-fn dispatch_human_status<R: CliRuntime>(
-    runtime: &R,
-    args: StatusArgs,
-    stdout: &mut impl Write,
-) -> Result<CliExit> {
-    let claim_id = parse_optional_claim_id(args.claim.as_deref())?;
-    let report = runtime.status(claim_id.as_ref())?;
-    human_output::write_status(
-        stdout,
-        &report,
-        claim_id.as_ref(),
-        args.verbose,
-        &runtime.claim_load_diagnostics()?,
-    )?;
-    Ok(exit_code_for_status(&report))
-}
-
-fn dispatch_agent_command<R: CliRuntime>(
-    runtime: &R,
-    command: AgentCommand,
-    stdout: &mut impl Write,
-) -> Result<CliExit> {
-    match command {
-        AgentCommand::Claim(args) => match args.command {
-            AgentClaimCommand::List => {
-                let claims = runtime.list_claims()?;
-                let data = agent_claim_list_data(&claims);
-                write_agent_envelope(stdout, "claim.list", &data)?;
-                Ok(exit_code_for_claim_summaries(&claims))
-            }
-            AgentClaimCommand::Get { claim_id } => {
-                let bundle = runtime.get_claim(&parse_claim_id(&claim_id)?)?;
-                let data = agent_claim_get_data(&bundle);
-                write_agent_envelope(stdout, "claim.get", &data).map(|_| CliExit::Success)
-            }
-            AgentClaimCommand::Next => {
-                let next = runtime.next_claim()?;
-                write_agent_envelope(stdout, "claim.next", &next)?;
-                Ok(exit_code_for_next(&next))
-            }
-        },
-        AgentCommand::Drift(args) => match args.command {
-            AgentDriftCommand::Detect { claim } => {
-                let drift = runtime.detect_drift(&parse_claim_id(&claim)?)?;
-                write_agent_envelope(stdout, "drift.detect", &drift)?;
-                Ok(exit_code_for_drift(&drift))
-            }
-        },
-        AgentCommand::Run(args) => {
-            let report = runtime.run_claim(RunClaimRequest {
-                claim_id: parse_claim_id(&args.claim)?,
-                dry_run: false,
-                model: None,
-                effort: None,
-            })?;
-            write_agent_envelope(stdout, "run", &report)?;
-            Ok(exit_code_for_work(&report))
-        }
-        AgentCommand::Verify(args) => {
-            let report = runtime.verify_claim(runtime.default_verify_request(
-                parse_claim_id(&args.claim)?,
-                args.with_probe,
-                args.full_workspace,
-            )?)?;
-            write_agent_envelope(stdout, "verify", &report)?;
-            Ok(exit_code_for_verify(&report))
-        }
-        AgentCommand::Patch(args) => match args.command {
-            AgentPatchCommand::Propose { claim } => {
-                let report = runtime.propose_patch(&parse_claim_id(&claim)?)?;
-                write_agent_envelope(stdout, "patch.propose", &report)?;
-                Ok(CliExit::PatchApprovalRequired)
-            }
-            AgentPatchCommand::Apply { patch } => {
-                let report = runtime.apply_patch(&parse_patch_id(&patch)?)?;
-                write_agent_envelope(stdout, "patch.apply", &report)?;
-                Ok(exit_code_for_accept(&report))
-            }
-        },
-        AgentCommand::Status(args) => {
-            let claim_id = parse_optional_claim_id(args.claim.as_deref())?;
-            let report = runtime.status(claim_id.as_ref())?;
-            write_agent_envelope(stdout, "status", &report)?;
-            Ok(exit_code_for_status(&report))
-        }
+    let mut appended_ids = Vec::new();
+    for command in &config.verify.commands {
+        let evidence_id = EvidenceNdjsonStore::next_evidence_id(&config.paths.evidence_file)?;
+        let evidence = CommandCapture::capture(
+            claim,
+            evidence_id.clone(),
+            command,
+            artifact_digests.clone(),
+        )?;
+        EvidenceNdjsonStore::append(&config.paths.evidence_file, &evidence)?;
+        appended_ids.push(evidence_id);
     }
+
+    let evidence = EvidenceNdjsonStore::read(&config.paths.evidence_file)?;
+    let report = verify_claim(claim, &artifact_digests, &evidence);
+    let exit = CliExit::for_claim_report(&report);
+    let output = VerifyOutput {
+        claim_id: claim.id.clone(),
+        evidence_ids: appended_ids,
+        report,
+    };
+    write_verify(stdout, OutputMode::from_json_flag(args.json), &output)?;
+    Ok(exit)
+}
+
+fn dispatch_report(
+    config: &CanonicalTriadConfig,
+    args: ReportArgs,
+    stdout: &mut impl Write,
+) -> Result<CliExit> {
+    let claims = load_claims(config)?;
+    let artifact_digests = SnapshotAdapter::collect(&config.repo_root, &config.snapshot.include)?;
+    let evidence = EvidenceNdjsonStore::read(&config.paths.evidence_file)?;
+
+    let reports = if let Some(claim) = args.claim.as_deref() {
+        let claim_id = parse_claim_id(claim)?;
+        let claim = find_claim(&claims, &claim_id)?;
+        vec![verify_claim(claim, &artifact_digests, &evidence)]
+    } else {
+        let snapshots = claims
+            .iter()
+            .map(|claim| (claim.id.clone(), artifact_digests.clone()))
+            .collect::<BTreeMap<ClaimId, BTreeMap<String, String>>>();
+        verify_many(&claims, &snapshots, &evidence)
+    };
+
+    let exit = CliExit::for_reports(&reports);
+    write_report(stdout, OutputMode::from_json_flag(args.json), &reports)?;
+    Ok(exit)
+}
+
+fn load_claims(config: &CanonicalTriadConfig) -> Result<Vec<Claim>> {
+    ClaimMarkdownAdapter::discover_claim_file_paths(&config.paths.claim_dir)?
+        .iter()
+        .map(|path| ClaimMarkdownAdapter::parse_claim_file(path))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(anyhow::Error::from)
+}
+
+fn filter_claims<'a>(claims: &'a [Claim], claim_id: Option<&str>) -> Result<Vec<&'a Claim>> {
+    if let Some(claim_id) = claim_id {
+        let claim_id = parse_claim_id(claim_id)?;
+        Ok(vec![find_claim(claims, &claim_id)?])
+    } else {
+        Ok(claims.iter().collect())
+    }
+}
+
+fn find_claim<'a>(claims: &'a [Claim], claim_id: &ClaimId) -> Result<&'a Claim> {
+    claims
+        .iter()
+        .find(|claim| &claim.id == claim_id)
+        .ok_or_else(|| anyhow!("claim not found: {claim_id}"))
 }

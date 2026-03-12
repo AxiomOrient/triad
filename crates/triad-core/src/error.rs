@@ -8,9 +8,7 @@ pub enum TriadErrorKind {
     Parse,
     Io,
     InvalidState,
-    RuntimeBlocked,
     VerificationFailed,
-    PatchConflict,
     Serialization,
 }
 
@@ -21,9 +19,7 @@ impl TriadErrorKind {
             Self::Parse => "parse",
             Self::Io => "io",
             Self::InvalidState => "invalid-state",
-            Self::RuntimeBlocked => "runtime-blocked",
             Self::VerificationFailed => "verification-failed",
-            Self::PatchConflict => "patch-conflict",
             Self::Serialization => "serialization",
         }
     }
@@ -45,12 +41,8 @@ pub enum TriadError {
     Io(String),
     #[error("invalid state: {0}")]
     InvalidState(String),
-    #[error("runtime blocked: {0}")]
-    RuntimeBlocked(String),
     #[error("verification failed: {0}")]
     VerificationFailed(String),
-    #[error("patch conflict: {0}")]
-    PatchConflict(String),
     #[error("serialization error: {0}")]
     Serialization(String),
 }
@@ -62,9 +54,7 @@ impl TriadError {
             Self::Parse(_) => TriadErrorKind::Parse,
             Self::Io(_) => TriadErrorKind::Io,
             Self::InvalidState(_) => TriadErrorKind::InvalidState,
-            Self::RuntimeBlocked(_) => TriadErrorKind::RuntimeBlocked,
             Self::VerificationFailed(_) => TriadErrorKind::VerificationFailed,
-            Self::PatchConflict(_) => TriadErrorKind::PatchConflict,
             Self::Serialization(_) => TriadErrorKind::Serialization,
         }
     }
@@ -75,10 +65,6 @@ impl TriadError {
 
     pub fn config_field(field: &str, detail: &str) -> Self {
         Self::Config(format!("invalid config {field}: {detail}"))
-    }
-
-    pub fn patch_conflict(patch_id: &str, detail: &str) -> Self {
-        Self::PatchConflict(format!("{patch_id}: {detail}"))
     }
 }
 
@@ -100,16 +86,8 @@ mod tests {
                 TriadErrorKind::InvalidState,
             ),
             (
-                TriadError::RuntimeBlocked("blocked tool".into()),
-                TriadErrorKind::RuntimeBlocked,
-            ),
-            (
                 TriadError::VerificationFailed("tests failed".into()),
                 TriadErrorKind::VerificationFailed,
-            ),
-            (
-                TriadError::PatchConflict("merge conflict".into()),
-                TriadErrorKind::PatchConflict,
             ),
             (
                 TriadError::Serialization("bad json".into()),
@@ -144,18 +122,6 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "config error: invalid config paths.claim_dir: must not be empty"
-        );
-    }
-
-    #[test]
-    fn error_mapping_patch_conflict_helper_is_patch_conflict() {
-        let error = TriadError::patch_conflict("PATCH-000001", "claim file no longer matches");
-
-        assert_eq!(error.kind(), TriadErrorKind::PatchConflict);
-        assert_eq!(error.kind().as_str(), "patch-conflict");
-        assert_eq!(
-            error.to_string(),
-            "patch conflict: PATCH-000001: claim file no longer matches"
         );
     }
 }

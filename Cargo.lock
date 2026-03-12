@@ -389,44 +389,33 @@ name = "triad-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "camino",
  "clap",
  "serde",
  "serde_json",
- "triad-config",
  "triad-core",
- "triad-runtime",
-]
-
-[[package]]
-name = "triad-config"
-version = "0.1.0"
-dependencies = [
- "camino",
- "serde",
- "toml",
- "triad-core",
+ "triad-fs",
 ]
 
 [[package]]
 name = "triad-core"
 version = "0.1.0"
 dependencies = [
- "camino",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 
 [[package]]
-name = "triad-runtime"
+name = "triad-fs"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "camino",
  "serde",
  "serde_json",
  "sha2",
- "triad-config",
+ "toml",
  "triad-core",
 ]
 

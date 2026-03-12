@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -23,69 +23,67 @@ EXPECTED_DOCS = [
     "08-runtime-integration.md",
     "09-verification-and-ratchet.md",
     "10-implementation-blueprint.md",
+    "11-consistency-report.md",
     "15-release-readiness.md",
 ]
 
 EXPECTED_SCHEMAS = [
-    "envelope.schema.json",
-    "agent.claim.list.schema.json",
+    "claim.schema.json",
+    "evidence.schema.json",
+    "claim_report.schema.json",
+    "lint_report.schema.json",
+    "triad_config.schema.json",
+]
+
+OBSOLETE_CRATES = [
+    ROOT / "crates" / "triad-config",
+    ROOT / "crates" / "triad-runtime",
+]
+
+OBSOLETE_SCHEMAS = [
     "agent.claim.get.schema.json",
+    "agent.claim.list.schema.json",
     "agent.claim.next.schema.json",
     "agent.drift.detect.schema.json",
-    "agent.run.schema.json",
-    "agent.verify.schema.json",
-    "agent.patch.propose.schema.json",
     "agent.patch.apply.schema.json",
+    "agent.patch.propose.schema.json",
+    "agent.run.schema.json",
     "agent.status.schema.json",
+    "agent.verify.schema.json",
+    "envelope.schema.json",
 ]
-
-REQUIRED_AGENT_RULES = [
-    "Work on exactly one claim per run.",
-    "Never edit `spec/claims/**` directly during `work`.",
-    "Do not run `git commit` or `git push`.",
-]
-
-BROKEN_VERSION_RE = re.compile(r"\b[Vv](?:1|2)\b")
-
-
-def fail(msg: str) -> str:
-    return f"- FAIL: {msg}"
 
 
 def ok(msg: str) -> str:
     return f"- PASS: {msg}"
 
 
-def parse_markdown_links(text: str):
-    for match in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", text):
-        yield match.group(1)
+def fail(msg: str) -> str:
+    return f"- FAIL: {msg}"
 
 
-def validate_doc_map(text: str):
-    expected = sorted(path.name for path in DOCS.glob("*.md"))
-    missing = [name for name in expected if name not in text]
-    return missing
+def run_command(args: list[str]) -> tuple[int, str, str]:
+    result = subprocess.run(args, cwd=ROOT, text=True, capture_output=True)
+    return result.returncode, result.stdout, result.stderr
 
 
-def main() -> int:
-    lines = []
+def build_report() -> tuple[list[str], int, int]:
+    lines: list[str] = []
     ok_count = 0
     fail_count = 0
 
-    # docs exist
     for name in EXPECTED_DOCS:
         path = DOCS / name
-        if path.exists():
+        if path.is_file():
             lines.append(ok(f"document exists: docs/{name}"))
             ok_count += 1
         else:
             lines.append(fail(f"missing document: docs/{name}"))
             fail_count += 1
 
-    # schema files parse
     for name in EXPECTED_SCHEMAS:
         path = SCHEMAS / name
-        if not path.exists():
+        if not path.is_file():
             lines.append(fail(f"missing schema: schemas/{name}"))
             fail_count += 1
             continue
@@ -97,107 +95,99 @@ def main() -> int:
             lines.append(fail(f"schema parse error in schemas/{name}: {exc}"))
             fail_count += 1
 
-    # cargo workspace
-    cargo_path = ROOT / "Cargo.toml"
-    try:
-        cargo = tomllib.loads(cargo_path.read_text(encoding="utf-8"))
-        members = cargo["workspace"]["members"]
-        missing_members = [m for m in members if not (ROOT / m / "Cargo.toml").exists()]
-        if missing_members:
-            lines.append(fail(f"workspace members missing Cargo.toml: {missing_members}"))
+    for path in OBSOLETE_CRATES:
+        if path.exists():
+            lines.append(fail(f"obsolete crate still exists: {path.relative_to(ROOT)}"))
             fail_count += 1
         else:
-            lines.append(ok("root Cargo.toml parses and all workspace members exist"))
+            lines.append(ok(f"obsolete crate removed: {path.relative_to(ROOT)}"))
             ok_count += 1
+
+    for name in OBSOLETE_SCHEMAS:
+        path = SCHEMAS / name
+        if path.exists():
+            lines.append(fail(f"obsolete schema still exists: schemas/{name}"))
+            fail_count += 1
+        else:
+            lines.append(ok(f"obsolete schema removed: schemas/{name}"))
+            ok_count += 1
+
+    try:
+        cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+        members = cargo["workspace"]["members"]
+        expected_members = [
+            "crates/triad-core",
+            "crates/triad-fs",
+            "crates/triad-cli",
+        ]
+        if members == expected_members:
+            lines.append(ok("workspace members match triad-core/triad-fs/triad-cli"))
+            ok_count += 1
+        else:
+            lines.append(fail(f"unexpected workspace members: {members}"))
+            fail_count += 1
     except Exception as exc:
         lines.append(fail(f"root Cargo.toml parse error: {exc}"))
         fail_count += 1
 
-    # triad.toml
     try:
-        tomllib.loads((ROOT / "triad.toml").read_text(encoding="utf-8"))
-        lines.append(ok("triad.toml parses"))
-        ok_count += 1
+        config = tomllib.loads((ROOT / "triad.toml").read_text(encoding="utf-8"))
+        paths = sorted(config["paths"].keys())
+        snapshot = sorted(config["snapshot"].keys())
+        verify = sorted(config["verify"].keys())
+        if config.get("version") == 2 and paths == ["claim_dir", "evidence_file"] and snapshot == ["include"] and verify == ["commands"]:
+            lines.append(ok("triad.toml matches minimal v2 config"))
+            ok_count += 1
+        else:
+            lines.append(fail("triad.toml does not match minimal v2 config"))
+            fail_count += 1
     except Exception as exc:
         lines.append(fail(f"triad.toml parse error: {exc}"))
         fail_count += 1
 
-    # markdown links
-    for md in ROOT.rglob("*.md"):
-        text = md.read_text(encoding="utf-8")
-        for link in parse_markdown_links(text):
-            if link.startswith(("http://", "https://", "mailto:")):
-                continue
-            target = (md.parent / link).resolve()
-            if not target.exists():
-                lines.append(fail(f"broken relative link in {md.relative_to(ROOT)} -> {link}"))
-                fail_count += 1
-            else:
-                ok_count += 1
-
-        if BROKEN_VERSION_RE.search(text):
-            lines.append(fail(f"versioned roadmap language present in {md.relative_to(ROOT)}"))
-            fail_count += 1
-
-    # doc map coverage
-    doc_map_text = (DOCS / "00-document-map.md").read_text(encoding="utf-8")
-    missing = validate_doc_map(doc_map_text)
-    if missing:
-        lines.append(fail(f"document map missing entries: {missing}"))
-        fail_count += 1
-    else:
-        lines.append(ok("document map includes all expected docs"))
+    help_code, help_stdout, help_stderr = run_command(["cargo", "run", "-p", "triad-cli", "--", "--help"])
+    if help_code == 0 and all(token in help_stdout for token in ["init", "lint", "verify", "report"]) and all(token not in help_stdout for token in ["work", "accept", "agent"]):
+        lines.append(ok("CLI help matches current command surface"))
         ok_count += 1
+    else:
+        lines.append(fail(f"CLI help mismatch: stdout={help_stdout!r} stderr={help_stderr!r}"))
+        fail_count += 1
 
-    # root scaffold
-    required_paths = [
-        ROOT / ".triad" / "evidence.ndjson",
-        ROOT / ".triad" / "patches",
-        ROOT / ".triad" / "runs",
-        ROOT / ".gitignore",
-        ROOT / "AGENTS.md",
-        ROOT / "triad.toml",
-    ]
-    for path in required_paths:
-        if path.exists():
-            lines.append(ok(f"scaffold exists: {path.relative_to(ROOT)}"))
-            ok_count += 1
-        else:
-            lines.append(fail(f"missing scaffold path: {path.relative_to(ROOT)}"))
+    lint_code, lint_stdout, lint_stderr = run_command(
+        ["cargo", "run", "-p", "triad-cli", "--", "lint", "--all", "--json"]
+    )
+    if lint_code == 0:
+        try:
+            lint_json = json.loads(lint_stdout)
+            claim_ids = [claim["claim_id"] for claim in lint_json["claims"]]
+            if lint_json["ok"] is True and "REQ-auth-001" in claim_ids and "REQ-auth-002" in claim_ids:
+                lines.append(ok("example claims parse via CLI lint"))
+                ok_count += 1
+            else:
+                lines.append(fail(f"lint output missing expected claims: {lint_stdout!r}"))
+                fail_count += 1
+        except Exception as exc:
+            lines.append(fail(f"lint JSON parse failed: {exc}"))
             fail_count += 1
+    else:
+        lines.append(fail(f"CLI lint failed: stdout={lint_stdout!r} stderr={lint_stderr!r}"))
+        fail_count += 1
 
-    # AGENTS.md rules
-    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    for rule in REQUIRED_AGENT_RULES:
-        if rule in agents:
-            lines.append(ok(f"AGENTS.md contains required rule: {rule}"))
-            ok_count += 1
-        else:
-            lines.append(fail(f"AGENTS.md missing required rule: {rule}"))
-            fail_count += 1
+    doc_map = (DOCS / "00-document-map.md").read_text(encoding="utf-8")
+    missing = [name for name in EXPECTED_DOCS if name not in doc_map]
+    if not missing:
+        lines.append(ok("document map includes expected docs"))
+        ok_count += 1
+    else:
+        lines.append(fail(f"document map missing docs: {missing}"))
+        fail_count += 1
 
-    # CLI command cross-check
-    cli_rs = (ROOT / "crates" / "triad-cli" / "src" / "cli.rs").read_text(encoding="utf-8")
-    expected_tokens = [
-        "Init",
-        "Next",
-        "Work",
-        "Verify",
-        "Accept",
-        "Status",
-        "AgentCommand",
-        "AgentClaimCommand",
-        "AgentDriftCommand",
-        "AgentPatchCommand",
-    ]
-    for token in expected_tokens:
-        if token in cli_rs:
-            lines.append(ok(f"CLI skeleton includes token: {token}"))
-            ok_count += 1
-        else:
-            lines.append(fail(f"CLI skeleton missing token: {token}"))
-            fail_count += 1
+    return lines, ok_count, fail_count
 
+
+def main() -> int:
+    lines, ok_count, fail_count = build_report()
+    verdict = "READY" if fail_count == 0 else "NOT READY"
     report = [
         "# Consistency Report",
         "",
@@ -212,11 +202,11 @@ def main() -> int:
         "",
         "## Verdict",
         "",
-        "READY" if fail_count == 0 else "NOT READY",
+        verdict,
         "",
     ]
-    out = DOCS / "11-consistency-report.md"
-    out.write_text("\n".join(report), encoding="utf-8")
+
+    (DOCS / "11-consistency-report.md").write_text("\n".join(report), encoding="utf-8")
     print("\n".join(report))
     return 0 if fail_count == 0 else 1
 

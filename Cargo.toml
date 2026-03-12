@@ -2,8 +2,7 @@
 resolver = "3"
 members = [
   "crates/triad-core",
-  "crates/triad-config",
-  "crates/triad-runtime",
+  "crates/triad-fs",
   "crates/triad-cli",
 ]
 
