@@ -66,7 +66,7 @@ claim_dir = "spec/claims"
 evidence_file = ".triad/evidence.ndjson"
 
 [snapshot]
-include = ["src/**", "tests/**", "crates/**", "Cargo.toml", "Cargo.lock"]
+include = ["src/**", "tests/**", "crates/**", "triad.toml", "Cargo.toml", "Cargo.lock"]
 
 [verify]
 commands = ["cargo test --lib", "cargo test --tests"]
@@ -114,6 +114,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 python3 scripts/verify_artifacts.py
 ```
+
+`scripts/verify_artifacts.py` is the artifact/surface gate. Runtime behavior stays covered by Rust tests.
 
 Useful smoke checks:
 

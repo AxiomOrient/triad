@@ -86,6 +86,11 @@ fn init_creates_minimal_scaffold() {
     assert!(repo_root.join("triad.toml").is_file());
     assert!(repo_root.join("spec/claims").is_dir());
     assert!(repo_root.join(".triad/evidence.ndjson").is_file());
+    assert!(
+        fs::read_to_string(repo_root.join("triad.toml"))
+            .expect("config should read")
+            .contains("\"triad.toml\"")
+    );
 }
 
 #[test]
@@ -255,6 +260,76 @@ fn verify_expands_claim_path_in_structured_commands() {
 }
 
 #[test]
+fn verify_recovers_after_fixing_init_default_config() {
+    let repo_root = temp_dir("verify-recovers");
+    let init_cli = Cli::try_parse_from(["triad", "init"]).expect("init cli should parse");
+    let mut init_stdout = Vec::new();
+
+    let init_exit =
+        execute_cli_from_dir(init_cli, &mut init_stdout, &repo_root).expect("init should succeed");
+
+    assert_eq!(init_exit as u8, 0);
+
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001", "--json"])
+        .expect("verify cli should parse");
+    let mut first_verify_stdout = Vec::new();
+    let first_verify_exit = execute_cli_from_dir(verify_cli, &mut first_verify_stdout, &repo_root)
+        .expect("first verify should return a report");
+    let first_verify_json: serde_json::Value =
+        serde_json::from_slice(&first_verify_stdout).expect("first verify stdout should be json");
+
+    assert_eq!(first_verify_exit as u8, 2);
+    assert_eq!(first_verify_json["report"]["status"], "contradicted");
+
+    write_config(&repo_root, &["true"]);
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001", "--json"])
+        .expect("verify cli should parse");
+    let mut second_verify_stdout = Vec::new();
+    let second_verify_exit =
+        execute_cli_from_dir(verify_cli, &mut second_verify_stdout, &repo_root)
+            .expect("second verify should succeed");
+    let second_verify_json: serde_json::Value =
+        serde_json::from_slice(&second_verify_stdout).expect("second verify stdout should be json");
+
+    assert_eq!(second_verify_exit as u8, 0);
+    assert_eq!(second_verify_json["report"]["status"], "confirmed");
+
+    let report_cli = Cli::try_parse_from(["triad", "report", "--claim", "REQ-auth-001", "--json"])
+        .expect("report cli should parse");
+    let mut report_stdout = Vec::new();
+    let report_exit = execute_cli_from_dir(report_cli, &mut report_stdout, &repo_root)
+        .expect("report should succeed");
+    let report_json: serde_json::Value =
+        serde_json::from_slice(&report_stdout).expect("report stdout should be json");
+
+    assert_eq!(report_exit as u8, 0);
+    assert_eq!(report_json[0]["status"], "confirmed");
+}
+
+#[test]
+fn verify_missing_claim_uses_invalid_input_exit() {
+    let repo_root = temp_dir("verify-missing-claim");
+    write_config(&repo_root, &["true"]);
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-404", "--json"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+
+    let error = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect_err("missing claim should fail");
+
+    assert_eq!(crate::exit_codes::exit_code_for_error(&error) as u8, 5);
+    assert_eq!(
+        error.to_string(),
+        "invalid state: claim not found: REQ-auth-404"
+    );
+}
+
+#[test]
 fn report_uses_snapshot_include_when_structured_command_omits_artifacts() {
     let repo_root = temp_dir("report-fallback-artifacts");
     fs::create_dir_all(repo_root.join("src")).expect("src dir should create");
@@ -340,7 +415,7 @@ fn report_all_ignores_unrelated_changes_outside_recorded_subset() {
 }
 
 #[test]
-fn report_all_json_uses_batch_verification_for_multiple_claims() {
+fn report_all_json_reports_multiple_claims() {
     let repo_root = temp_dir("report-all");
     write_config(&repo_root, &["true"]);
     write_claim(&repo_root, "REQ-auth-001", "Login success");

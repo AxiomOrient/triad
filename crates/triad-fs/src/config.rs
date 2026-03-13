@@ -79,6 +79,7 @@ impl TriadConfig {
                     "src/**".into(),
                     "tests/**".into(),
                     "crates/**".into(),
+                    "triad.toml".into(),
                     "Cargo.toml".into(),
                     "Cargo.lock".into(),
                 ],
@@ -284,6 +285,13 @@ mod tests {
         assert_eq!(
             parsed.paths.evidence_file,
             Utf8PathBuf::from(".triad/evidence.ndjson")
+        );
+        assert!(
+            parsed
+                .snapshot
+                .include
+                .iter()
+                .any(|path| path == "triad.toml")
         );
         assert_eq!(parsed.verify.commands.len(), 2);
         assert!(matches!(

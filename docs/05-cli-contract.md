@@ -42,7 +42,7 @@ claim_dir = "spec/claims"
 evidence_file = ".triad/evidence.ndjson"
 
 [snapshot]
-include = ["src/**", "tests/**", "crates/**", "Cargo.toml", "Cargo.lock"]
+include = ["src/**", "tests/**", "crates/**", "triad.toml", "Cargo.toml", "Cargo.lock"]
 
 [verify]
 commands = ["cargo test --lib", "cargo test --tests"]
@@ -71,4 +71,5 @@ commands = [
 3. `cargo test --workspace`
 4. `python3 scripts/verify_artifacts.py`
 
-`scripts/verify_artifacts.py` 는 docs/schema/crate surface, CLI contract, semantic fixture를 같이 확인한다.
+`scripts/verify_artifacts.py` 는 docs/schema/crate surface와 root config contract만 확인한다.
+CLI behavior와 semantic status coverage는 Rust 테스트가 담당한다.

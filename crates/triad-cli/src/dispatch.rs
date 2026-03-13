@@ -2,7 +2,7 @@ use std::io::Write;
 
 use anyhow::{Result, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
-use triad_core::{Claim, ClaimId, verify_claim};
+use triad_core::{Claim, ClaimId, TriadError, verify_claim};
 use triad_fs::{
     CanonicalTriadConfig, ClaimMarkdownAdapter, CommandCapture, EvidenceNdjsonStore,
     SnapshotAdapter,
@@ -178,7 +178,7 @@ fn find_claim<'a>(claims: &'a [LoadedClaim], claim_id: &ClaimId) -> Result<&'a L
     claims
         .iter()
         .find(|claim| &claim.claim.id == claim_id)
-        .ok_or_else(|| anyhow!("claim not found: {claim_id}"))
+        .ok_or_else(|| TriadError::InvalidState(format!("claim not found: {claim_id}")).into())
 }
 
 fn resolve_verify_commands(
