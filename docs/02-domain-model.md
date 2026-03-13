@@ -1,4 +1,16 @@
-# Domain Model
+# Core Contract
+
+`triad`는 Claim 하나를 현재 evidence와 artifact snapshot으로 판정하는 verification kernel이다.
+
+## Surface
+
+| Crate | Responsibility |
+|---|---|
+| `triad-core` | pure verification kernel |
+| `triad-fs` | filesystem reference adapter |
+| `triad-cli` | `init / lint / verify / report` thin CLI |
+
+`next`, `work`, `accept`, `agent`, runtime backend, patch draft surface는 현재 계약에 없다.
 
 ## Claim
 
@@ -15,7 +27,7 @@ pub struct Claim {
 ```
 
 - `Claim`은 유일한 canonical unit이다.
-- `revision_digest`는 canonical markdown bytes의 `sha256`이다.
+- `revision_digest`는 canonical claim markdown bytes의 `sha256`이다.
 
 ## Evidence
 
@@ -39,9 +51,16 @@ pub struct Evidence {
 
 - `Hard` evidence만 status를 바꾼다.
 - `Advisory` evidence는 `reasons`에는 들어가지만 status는 바꾸지 않는다.
-- evidence는 `.triad/evidence.ndjson`에 append-only로 쌓인다.
+- evidence log는 `.triad/evidence.ndjson` append-only NDJSON이다.
 
-## ClaimStatus
+## Freshness And Status
+
+freshness는 아래 둘이 모두 같을 때만 `Fresh`다.
+
+1. `evidence.claim_revision_digest == claim.revision_digest`
+2. `evidence.artifact_digests == current_artifact_snapshot`
+
+`ClaimStatus`는 다섯 개만 쓴다.
 
 - `confirmed`
 - `contradicted`
@@ -49,7 +68,7 @@ pub struct Evidence {
 - `stale`
 - `unsupported`
 
-판정 순서:
+판정 순서는 고정이다.
 
 1. fresh hard fail 존재 -> `contradicted`
 2. fresh hard pass 존재 -> `confirmed`
@@ -71,5 +90,5 @@ pub struct ClaimReport {
 }
 ```
 
-- report는 explanation 가능한 output이어야 한다.
-- strongest verdict는 fail > pass > unknown 순으로 계산한다.
+- `strongest_verdict`는 `fail > pass > unknown` 순서다.
+- `triad-core`는 filesystem, config parsing, process spawn을 모른다.

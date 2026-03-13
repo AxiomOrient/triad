@@ -14,13 +14,6 @@
 
 `next`, `work`, `accept`, `agent` 같은 workflow/orchestration surface는 v1 범위 밖이다.
 
-## 언어
-
-- 한국어: 현재 문서
-- [English](./docs/i18n/en/README.md)
-- [Español](./docs/i18n/es/README.md)
-- [中文](./docs/i18n/zh/README.md)
-
 ## 빠른 시작
 
 ```bash
@@ -91,8 +84,6 @@ cargo run -p triad-cli -- report --all --json
 
 ## 더 읽을 문서
 
-- [docs/00-document-map.md](./docs/00-document-map.md)
 - [docs/02-domain-model.md](./docs/02-domain-model.md)
+- [docs/03-spec-format.md](./docs/03-spec-format.md)
 - [docs/05-cli-contract.md](./docs/05-cli-contract.md)
-- [docs/10-implementation-blueprint.md](./docs/10-implementation-blueprint.md)
-- [docs/15-release-readiness.md](./docs/15-release-readiness.md)

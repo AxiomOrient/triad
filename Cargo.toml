@@ -16,16 +16,14 @@ rust-version = "1.85"
 tag = "v0.1.0"
 binary = "triad"
 readme = "README.md"
-consistency_report = "docs/11-consistency-report.md"
-release_checklist = "docs/15-release-readiness.md"
 install_command = "cargo install --path crates/triad-cli"
 verify_command = "cargo test --workspace"
 artifact_set = [
   "README.md",
-  "docs/11-consistency-report.md",
-  "docs/15-release-readiness.md",
+  "docs/",
   "schemas/",
   "crates/",
+  "scripts/verify_artifacts.py",
 ]
 
 [workspace.dependencies]
