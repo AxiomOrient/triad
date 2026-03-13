@@ -15,9 +15,14 @@ pub fn classify_evidence_freshness(
     current_artifacts: &BTreeMap<String, String>,
     evidence: &Evidence,
 ) -> EvidenceFreshness {
+    let stale_artifacts = evidence
+        .artifact_digests
+        .iter()
+        .any(|(path, digest)| current_artifacts.get(path) != Some(digest));
+
     match (
         evidence.claim_revision_digest != claim.revision_digest,
-        evidence.artifact_digests != *current_artifacts,
+        stale_artifacts,
     ) {
         (false, false) => EvidenceFreshness::Fresh,
         (true, false) => EvidenceFreshness::StaleClaimRevision,
@@ -128,6 +133,24 @@ mod tests {
         assert_eq!(
             classify_evidence_freshness(&claim, &current_artifacts(), &evidence),
             EvidenceFreshness::StaleBoth
+        );
+    }
+
+    #[test]
+    fn freshness_ignores_current_artifacts_outside_recorded_subset() {
+        let claim = sample_claim("sha256:claim");
+        let evidence = sample_evidence(
+            "sha256:claim",
+            BTreeMap::from([("src/auth.rs".into(), "sha256:file".into())]),
+        );
+        let current_artifacts = BTreeMap::from([
+            ("src/auth.rs".into(), "sha256:file".into()),
+            ("src/other.rs".into(), "sha256:changed".into()),
+        ]);
+
+        assert_eq!(
+            classify_evidence_freshness(&claim, &current_artifacts, &evidence),
+            EvidenceFreshness::Fresh
         );
     }
 }

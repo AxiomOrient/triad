@@ -36,10 +36,18 @@ fn write_config(repo_root: &Utf8PathBuf, commands: &[&str]) {
         .map(|command| format!("  \"{command}\""))
         .collect::<Vec<_>>()
         .join(",\n");
+    write_config_body(
+        repo_root,
+        &format!("[\n{commands}\n]"),
+        "[\"spec/claims/**\"]",
+    );
+}
+
+fn write_config_body(repo_root: &Utf8PathBuf, commands_toml: &str, snapshot_include: &str) {
     fs::write(
         repo_root.join("triad.toml"),
         format!(
-            "version = 2\n\n[paths]\nclaim_dir = \"spec/claims\"\nevidence_file = \".triad/evidence.ndjson\"\n\n[snapshot]\ninclude = [\"spec/claims/**\"]\n\n[verify]\ncommands = [\n{commands}\n]\n"
+            "version = 2\n\n[paths]\nclaim_dir = \"spec/claims\"\nevidence_file = \".triad/evidence.ndjson\"\n\n[snapshot]\ninclude = {snapshot_include}\n\n[verify]\ncommands = {commands_toml}\n"
         ),
     )
     .expect("config should write");
@@ -182,6 +190,78 @@ fn verify_json_suppresses_verify_command_stdout() {
         verify_json["evidence_ids"],
         serde_json::json!(["EVID-000001", "EVID-000002"])
     );
+}
+
+#[test]
+fn verify_expands_claim_bound_structured_commands() {
+    let repo_root = temp_dir("verify-structured");
+    write_config_body(
+        &repo_root,
+        r#"[
+  { command = "test \"{claim_id}\" = \"REQ-auth-001\"", locator = "claim:{claim_id}", artifacts = ["spec/claims/**"] }
+]"#,
+        "[\"spec/claims/**\"]",
+    );
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001", "--json"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+
+    let verify_exit = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect("verify should succeed");
+    let verify_json: serde_json::Value =
+        serde_json::from_slice(&verify_stdout).expect("verify stdout should be json");
+
+    assert_eq!(verify_exit as u8, 0);
+    assert_eq!(verify_json["report"]["status"], "confirmed");
+
+    let evidence_path = repo_root.join(".triad/evidence.ndjson");
+    let evidence = fs::read_to_string(evidence_path).expect("evidence should read");
+    assert!(evidence.contains("\"command\":\"test \\\"REQ-auth-001\\\" = \\\"REQ-auth-001\\\"\""));
+    assert!(evidence.contains("\"locator\":\"claim:REQ-auth-001\""));
+}
+
+#[test]
+fn report_all_ignores_unrelated_changes_outside_recorded_subset() {
+    let repo_root = temp_dir("report-subset");
+    fs::create_dir_all(repo_root.join("src")).expect("src dir should create");
+    fs::write(repo_root.join("src/unrelated.rs"), "before").expect("unrelated file should write");
+    write_config_body(
+        &repo_root,
+        r#"[
+  { command = "true", locator = "claim:{claim_id}", artifacts = ["spec/claims/**"] }
+]"#,
+        "[\"spec/claims/**\", \"src/**\"]",
+    );
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+    write_claim(&repo_root, "REQ-auth-002", "Logout success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+
+    let verify_exit = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect("verify should succeed");
+
+    assert_eq!(verify_exit as u8, 0);
+
+    fs::write(repo_root.join("src/unrelated.rs"), "after").expect("unrelated file should write");
+
+    let report_cli = Cli::try_parse_from(["triad", "report", "--all", "--json"])
+        .expect("report cli should parse");
+    let mut report_stdout = Vec::new();
+
+    let report_exit = execute_cli_from_dir(report_cli, &mut report_stdout, &repo_root)
+        .expect("report should succeed");
+    let report_json: serde_json::Value =
+        serde_json::from_slice(&report_stdout).expect("report stdout should be json");
+
+    assert_eq!(report_exit as u8, 0);
+    assert_eq!(report_json[0]["claim_id"], "REQ-auth-001");
+    assert_eq!(report_json[0]["status"], "confirmed");
+    assert_eq!(report_json[1]["claim_id"], "REQ-auth-002");
+    assert_eq!(report_json[1]["status"], "unsupported");
 }
 
 #[test]

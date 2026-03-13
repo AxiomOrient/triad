@@ -9,7 +9,7 @@ pub use claim_markdown::ClaimMarkdownAdapter;
 pub use command_capture::CommandCapture;
 pub use config::{
     CONFIG_FILE_NAME, CanonicalPathConfig, CanonicalTriadConfig, PathConfig, SnapshotConfig,
-    TriadConfig, VerifyConfig,
+    StructuredVerifyCommand, TriadConfig, VerifyCommandConfig, VerifyConfig,
 };
 pub use evidence_ndjson::EvidenceNdjsonStore;
 pub use init::init_scaffold;

@@ -52,13 +52,16 @@ pub struct Evidence {
 - `Hard` evidence만 status를 바꾼다.
 - `Advisory` evidence는 `reasons`에는 들어가지만 status는 바꾸지 않는다.
 - evidence log는 `.triad/evidence.ndjson` append-only NDJSON이다.
+- shell capture 경로는 expanded `command`, optional `locator`, optional `provenance.commit`, runtime `created_at`를 기록한다.
 
 ## Freshness And Status
 
-freshness는 아래 둘이 모두 같을 때만 `Fresh`다.
+freshness는 아래 둘을 기준으로 계산한다.
 
 1. `evidence.claim_revision_digest == claim.revision_digest`
-2. `evidence.artifact_digests == current_artifact_snapshot`
+2. `evidence.artifact_digests`에 기록된 모든 path의 digest가 `current_artifact_snapshot`의 같은 path와 일치
+
+즉, freshness는 evidence가 기록한 artifact subset에 대해서만 판정한다.
 
 `ClaimStatus`는 다섯 개만 쓴다.
 
@@ -92,3 +95,18 @@ pub struct ClaimReport {
 
 - `strongest_verdict`는 `fail > pass > unknown` 순서다.
 - `triad-core`는 filesystem, config parsing, process spawn을 모른다.
+
+## Verify Binding
+
+`triad.toml`의 `verify.commands`는 두 형태를 허용한다.
+
+- legacy string command
+- structured command object
+
+structured command object는 아래 필드를 쓴다.
+
+- `command`: required shell command template
+- `locator`: optional evidence locator template
+- `artifacts`: optional artifact scope glob list
+
+`triad verify --claim <CLAIM_ID>`는 command template 안의 `{claim_id}`와 `{claim_path}`를 선택된 claim 기준으로 확장한 뒤 실행한다.

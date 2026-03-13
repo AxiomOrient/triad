@@ -36,6 +36,17 @@ impl SnapshotAdapter {
 
         Ok(snapshot)
     }
+
+    pub fn filter(
+        snapshot: &BTreeMap<String, String>,
+        include: &[String],
+    ) -> BTreeMap<String, String> {
+        snapshot
+            .iter()
+            .filter(|(path, _)| include.iter().any(|pattern| matches_pattern(pattern, path)))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
 }
 
 fn walk(root: &Utf8Path, current: &Utf8Path, files: &mut Vec<String>) -> Result<(), TriadError> {

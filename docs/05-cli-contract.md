@@ -48,6 +48,19 @@ include = ["src/**", "tests/**", "crates/**", "Cargo.toml", "Cargo.lock"]
 commands = ["cargo test --lib", "cargo test --tests"]
 ```
 
+`verify.commands`는 하위호환으로 string 또는 object entry를 허용한다.
+
+```toml
+[verify]
+commands = [
+  "cargo test --lib",
+  { command = "cargo test -- {claim_id}", locator = "cargo-test:{claim_id}", artifacts = ["crates/triad-core/**"] }
+]
+```
+
+- string entry는 legacy repo-wide snapshot capture를 유지한다.
+- object entry는 claim template expansion과 evidence-local artifact subset capture를 허용한다.
+
 ## Verification Gate
 
 최종 게이트는 아래 네 개다.

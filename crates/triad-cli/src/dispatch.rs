@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use anyhow::{Result, anyhow};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use triad_core::{Claim, ClaimId, verify_claim, verify_many};
 use triad_fs::{
     CanonicalTriadConfig, ClaimMarkdownAdapter, CommandCapture, EvidenceNdjsonStore,
@@ -16,6 +16,19 @@ use crate::output::{
     write_report, write_verify,
 };
 use crate::parsing::parse_claim_id;
+
+#[derive(Debug, Clone)]
+struct LoadedClaim {
+    claim: Claim,
+    path: Utf8PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedVerifyCommand {
+    command: String,
+    locator: Option<String>,
+    artifact_include: Vec<String>,
+}
 
 pub(crate) fn dispatch_command(
     config: &CanonicalTriadConfig,
@@ -56,12 +69,17 @@ fn dispatch_lint(
         claims: filtered
             .iter()
             .map(|claim| LintClaimOutput {
-                claim_id: claim.id.clone(),
-                title: claim.title.clone(),
-                revision_digest: claim.revision_digest.clone(),
+                claim_id: claim.claim.id.clone(),
+                title: claim.claim.title.clone(),
+                revision_digest: claim.claim.revision_digest.clone(),
             })
             .collect(),
-        verify_commands: config.verify.commands.clone(),
+        verify_commands: config
+            .verify
+            .commands
+            .iter()
+            .map(|command| command.command().to_string())
+            .collect(),
     };
     write_lint(stdout, OutputMode::from_json_flag(args.json), &output)?;
     Ok(CliExit::Success)
@@ -78,23 +96,27 @@ fn dispatch_verify(
     let artifact_digests = SnapshotAdapter::collect(&config.repo_root, &config.snapshot.include)?;
 
     let mut appended_ids = Vec::new();
-    for command in &config.verify.commands {
+    for command in resolve_verify_commands(config, claim)? {
         let evidence_id = EvidenceNdjsonStore::next_evidence_id(&config.paths.evidence_file)?;
+        let evidence_artifacts =
+            SnapshotAdapter::filter(&artifact_digests, &command.artifact_include);
         let evidence = CommandCapture::capture(
-            claim,
+            &config.repo_root,
+            &claim.claim,
             evidence_id.clone(),
-            command,
-            artifact_digests.clone(),
+            &command.command,
+            command.locator.as_deref(),
+            evidence_artifacts,
         )?;
         EvidenceNdjsonStore::append(&config.paths.evidence_file, &evidence)?;
         appended_ids.push(evidence_id);
     }
 
     let evidence = EvidenceNdjsonStore::read(&config.paths.evidence_file)?;
-    let report = verify_claim(claim, &artifact_digests, &evidence);
+    let report = verify_claim(&claim.claim, &artifact_digests, &evidence);
     let exit = CliExit::for_claim_report(&report);
     let output = VerifyOutput {
-        claim_id: claim.id.clone(),
+        claim_id: claim.claim.id.clone(),
         evidence_ids: appended_ids,
         report,
     };
@@ -114,13 +136,13 @@ fn dispatch_report(
     let reports = if let Some(claim) = args.claim.as_deref() {
         let claim_id = parse_claim_id(claim)?;
         let claim = find_claim(&claims, &claim_id)?;
-        vec![verify_claim(claim, &artifact_digests, &evidence)]
+        vec![verify_claim(&claim.claim, &artifact_digests, &evidence)]
     } else {
-        let snapshots = claims
+        let (claim_refs, snapshots) = claims
             .iter()
-            .map(|claim| (claim.id.clone(), artifact_digests.clone()))
-            .collect::<BTreeMap<ClaimId, BTreeMap<String, String>>>();
-        verify_many(&claims, &snapshots, &evidence)
+            .map(|c| (c.claim.clone(), (c.claim.id.clone(), artifact_digests.clone())))
+            .unzip::<_, _, Vec<_>, BTreeMap<_, _>>();
+        verify_many(&claim_refs, &snapshots, &evidence)
     };
 
     let exit = CliExit::for_reports(&reports);
@@ -128,15 +150,23 @@ fn dispatch_report(
     Ok(exit)
 }
 
-fn load_claims(config: &CanonicalTriadConfig) -> Result<Vec<Claim>> {
+fn load_claims(config: &CanonicalTriadConfig) -> Result<Vec<LoadedClaim>> {
     ClaimMarkdownAdapter::discover_claim_file_paths(&config.paths.claim_dir)?
         .iter()
-        .map(|path| ClaimMarkdownAdapter::parse_claim_file(path))
-        .collect::<Result<Vec<_>, _>>()
+        .map(|path| {
+            Ok::<LoadedClaim, triad_core::TriadError>(LoadedClaim {
+                claim: ClaimMarkdownAdapter::parse_claim_file(path)?,
+                path: path.clone(),
+            })
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(anyhow::Error::from)
 }
 
-fn filter_claims<'a>(claims: &'a [Claim], claim_id: Option<&str>) -> Result<Vec<&'a Claim>> {
+fn filter_claims<'a>(
+    claims: &'a [LoadedClaim],
+    claim_id: Option<&str>,
+) -> Result<Vec<&'a LoadedClaim>> {
     if let Some(claim_id) = claim_id {
         let claim_id = parse_claim_id(claim_id)?;
         Ok(vec![find_claim(claims, &claim_id)?])
@@ -145,9 +175,43 @@ fn filter_claims<'a>(claims: &'a [Claim], claim_id: Option<&str>) -> Result<Vec<
     }
 }
 
-fn find_claim<'a>(claims: &'a [Claim], claim_id: &ClaimId) -> Result<&'a Claim> {
+fn find_claim<'a>(claims: &'a [LoadedClaim], claim_id: &ClaimId) -> Result<&'a LoadedClaim> {
     claims
         .iter()
-        .find(|claim| &claim.id == claim_id)
+        .find(|claim| &claim.claim.id == claim_id)
         .ok_or_else(|| anyhow!("claim not found: {claim_id}"))
+}
+
+fn resolve_verify_commands(
+    config: &CanonicalTriadConfig,
+    claim: &LoadedClaim,
+) -> Result<Vec<ResolvedVerifyCommand>> {
+    let claim_path = claim
+        .path
+        .strip_prefix(&config.repo_root)
+        .map_err(|_| anyhow!("claim path escaped repo root: {}", claim.path))?
+        .as_str()
+        .to_string();
+
+    Ok(config
+        .verify
+        .commands
+        .iter()
+        .map(|entry| ResolvedVerifyCommand {
+            command: expand_template(entry.command(), &claim.claim.id, &claim_path),
+            locator: entry
+                .locator()
+                .map(|locator| expand_template(locator, &claim.claim.id, &claim_path)),
+            artifact_include: entry
+                .artifacts()
+                .map(|artifacts| artifacts.to_vec())
+                .unwrap_or_else(|| config.snapshot.include.clone()),
+        })
+        .collect())
+}
+
+fn expand_template(template: &str, claim_id: &ClaimId, claim_path: &str) -> String {
+    template
+        .replace("{claim_id}", claim_id.as_str())
+        .replace("{claim_path}", claim_path)
 }

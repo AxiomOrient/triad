@@ -27,7 +27,23 @@ pub struct SnapshotConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerifyConfig {
-    pub commands: Vec<String>,
+    pub commands: Vec<VerifyCommandConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum VerifyCommandConfig {
+    Legacy(String),
+    Structured(StructuredVerifyCommand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StructuredVerifyCommand {
+    pub command: String,
+    #[serde(default)]
+    pub locator: Option<String>,
+    #[serde(default)]
+    pub artifacts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,7 +79,10 @@ impl TriadConfig {
                 ],
             },
             verify: VerifyConfig {
-                commands: vec!["cargo test --lib".into(), "cargo test --tests".into()],
+                commands: vec![
+                    VerifyCommandConfig::Legacy("cargo test --lib".into()),
+                    VerifyCommandConfig::Legacy("cargo test --tests".into()),
+                ],
             },
         }
     }
@@ -95,7 +114,7 @@ impl TriadConfig {
         validate_non_empty_path("paths.claim_dir", &self.paths.claim_dir)?;
         validate_non_empty_path("paths.evidence_file", &self.paths.evidence_file)?;
         validate_non_empty_strings("snapshot.include", &self.snapshot.include)?;
-        validate_non_empty_strings("verify.commands", &self.verify.commands)?;
+        validate_verify_commands(&self.verify.commands)?;
 
         let repo_root = repo_root.as_ref();
 
@@ -131,6 +150,69 @@ fn validate_non_empty_strings(field: &str, values: &[String]) -> Result<(), Tria
     }
 }
 
+fn validate_verify_commands(commands: &[VerifyCommandConfig]) -> Result<(), TriadError> {
+    if commands.is_empty() {
+        return Err(TriadError::config_field(
+            "verify.commands",
+            "must contain non-empty values",
+        ));
+    }
+
+    for command in commands {
+        match command {
+            VerifyCommandConfig::Legacy(value) => {
+                validate_non_empty_strings("verify.commands", std::slice::from_ref(value))?;
+            }
+            VerifyCommandConfig::Structured(value) => {
+                if value.command.trim().is_empty() {
+                    return Err(TriadError::config_field(
+                        "verify.commands.command",
+                        "must not be empty",
+                    ));
+                }
+                if value
+                    .locator
+                    .as_deref()
+                    .is_some_and(|locator| locator.trim().is_empty())
+                {
+                    return Err(TriadError::config_field(
+                        "verify.commands.locator",
+                        "must not be empty when present",
+                    ));
+                }
+                if let Some(artifacts) = value.artifacts.as_deref() {
+                    validate_non_empty_strings("verify.commands.artifacts", artifacts)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+impl VerifyCommandConfig {
+    pub fn command(&self) -> &str {
+        match self {
+            VerifyCommandConfig::Legacy(value) => value,
+            VerifyCommandConfig::Structured(value) => &value.command,
+        }
+    }
+
+    pub fn locator(&self) -> Option<&str> {
+        match self {
+            VerifyCommandConfig::Legacy(_) => None,
+            VerifyCommandConfig::Structured(value) => value.locator.as_deref(),
+        }
+    }
+
+    pub fn artifacts(&self) -> Option<&[String]> {
+        match self {
+            VerifyCommandConfig::Legacy(_) => None,
+            VerifyCommandConfig::Structured(value) => value.artifacts.as_deref(),
+        }
+    }
+}
+
 fn canonicalize_from_root(repo_root: &Utf8Path, path: &Utf8Path) -> Utf8PathBuf {
     if path.is_absolute() {
         path.to_owned()
@@ -147,7 +229,7 @@ mod tests {
 
     use camino::Utf8PathBuf;
 
-    use super::{CONFIG_FILE_NAME, TriadConfig};
+    use super::{CONFIG_FILE_NAME, TriadConfig, VerifyCommandConfig};
 
     fn temp_dir(label: &str) -> Utf8PathBuf {
         let unique = SystemTime::now()
@@ -172,6 +254,10 @@ mod tests {
             Utf8PathBuf::from(".triad/evidence.ndjson")
         );
         assert_eq!(parsed.verify.commands.len(), 2);
+        assert!(matches!(
+            parsed.verify.commands[0],
+            VerifyCommandConfig::Legacy(_)
+        ));
     }
 
     #[test]
@@ -197,5 +283,39 @@ mod tests {
     #[test]
     fn config_file_name_stays_stable() {
         assert_eq!(CONFIG_FILE_NAME, "triad.toml");
+    }
+
+    #[test]
+    fn config_supports_mixed_legacy_and_structured_verify_commands() {
+        let parsed = TriadConfig::from_toml_str(
+            r#"
+version = 2
+
+[paths]
+claim_dir = "spec/claims"
+evidence_file = ".triad/evidence.ndjson"
+
+[snapshot]
+include = ["crates/**"]
+
+[verify]
+commands = [
+  "cargo test --lib",
+  { command = "cargo test -- {claim_id}", locator = "cargo-test:{claim_id}", artifacts = ["crates/triad-core/**"] }
+]
+"#,
+        )
+        .expect("mixed config should parse");
+
+        assert_eq!(parsed.verify.commands.len(), 2);
+        assert_eq!(parsed.verify.commands[0].command(), "cargo test --lib");
+        assert_eq!(
+            parsed.verify.commands[1].locator(),
+            Some("cargo-test:{claim_id}")
+        );
+        assert_eq!(
+            parsed.verify.commands[1].artifacts(),
+            Some(&["crates/triad-core/**".to_string()][..])
+        );
     }
 }

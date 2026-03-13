@@ -95,6 +95,24 @@ def write_config(repo_root: Path, commands: list[str]) -> None:
     (repo_root / ".triad" / "evidence.ndjson").write_text("", encoding="utf-8")
 
 
+def write_structured_config(repo_root: Path, commands_toml: str, snapshot_include: str) -> None:
+    (repo_root / ".triad").mkdir(parents=True, exist_ok=True)
+    (repo_root / "triad.toml").write_text(
+        (
+            "version = 2\n\n"
+            "[paths]\n"
+            'claim_dir = "spec/claims"\n'
+            'evidence_file = ".triad/evidence.ndjson"\n\n'
+            "[snapshot]\n"
+            f"include = {snapshot_include}\n\n"
+            "[verify]\n"
+            f"commands = {commands_toml}\n"
+        ),
+        encoding="utf-8",
+    )
+    (repo_root / ".triad" / "evidence.ndjson").write_text("", encoding="utf-8")
+
+
 def append_seed_evidence(repo_root: Path, row: dict[str, object]) -> None:
     evidence_file = repo_root / ".triad" / "evidence.ndjson"
     with evidence_file.open("a", encoding="utf-8") as handle:
@@ -318,6 +336,45 @@ def verify_semantic_fixtures(binary: Path) -> list[str]:
         else:
             lines.append(fail(f"semantic fixture blocked mismatch: {payload!r}"))
 
+        subset_root = fixtures_root / "subset-freshness"
+        subset_root.mkdir()
+        (subset_root / "src").mkdir()
+        (subset_root / "src" / "unrelated.rs").write_text("before", encoding="utf-8")
+        write_structured_config(
+            subset_root,
+            """[
+  { command = "true", locator = "claim:{claim_id}", artifacts = ["spec/claims/**"] }
+]""",
+            '["spec/claims/**", "src/**"]',
+        )
+        write_claim(
+            subset_root,
+            "REQ-auth-001",
+            "Subset freshness",
+            "System keeps claim freshness scoped to recorded artifacts.",
+        )
+        code, stdout, stderr = run_triad(
+            binary,
+            ["verify", "--claim", "REQ-auth-001", "--json"],
+            cwd=subset_root,
+        )
+        if code != 0 or stderr:
+            lines.append(
+                fail(f"semantic fixture subset setup failed: stdout={stdout!r} stderr={stderr!r}")
+            )
+        else:
+            (subset_root / "src" / "unrelated.rs").write_text("after", encoding="utf-8")
+            code, payload = report_object(
+                binary,
+                subset_root,
+                "REQ-auth-001",
+                "fixture subset freshness report",
+            )
+            if code == 0 and payload.get("status") == "confirmed":
+                lines.append(ok("semantic fixture: subset freshness"))
+            else:
+                lines.append(fail(f"semantic fixture subset freshness mismatch: {payload!r}"))
+
     return lines
 
 
@@ -410,6 +467,22 @@ def build_report() -> tuple[list[str], int, int]:
             fail_count += 1
     except Exception as exc:
         lines.append(fail(f"triad.toml parse error: {exc}"))
+        fail_count += 1
+
+    try:
+        schema = json.loads((SCHEMAS / "triad_config.schema.json").read_text(encoding="utf-8"))
+        command_items = schema["properties"]["verify"]["properties"]["commands"]["items"]
+        variants = command_items.get("anyOf", [])
+        has_string = any(variant.get("type") == "string" for variant in variants)
+        has_object = any(variant.get("type") == "object" for variant in variants)
+        if has_string and has_object:
+            lines.append(ok("triad config schema supports legacy and structured verify commands"))
+            ok_count += 1
+        else:
+            lines.append(fail("triad config schema missing legacy/structured verify command union"))
+            fail_count += 1
+    except Exception as exc:
+        lines.append(fail(f"triad config schema verification failed: {exc}"))
         fail_count += 1
 
     help_code, help_stdout, help_stderr = run_triad(binary, ["--help"], cwd=ROOT)
