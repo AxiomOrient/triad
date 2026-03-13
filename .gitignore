@@ -45,5 +45,8 @@ tarpaulin-report.html
 .DS_Store
 Thumbs.db
 
+# Local planning artifacts
+plans/
+
 # Local shell tooling
 .direnv/

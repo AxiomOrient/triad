@@ -90,6 +90,18 @@ pub struct ClaimReport {
     pub strongest_verdict: Option<Verdict>,
 }
 
+impl std::fmt::Display for ClaimStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ClaimStatus::Confirmed => "confirmed",
+            ClaimStatus::Contradicted => "contradicted",
+            ClaimStatus::Blocked => "blocked",
+            ClaimStatus::Stale => "stale",
+            ClaimStatus::Unsupported => "unsupported",
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;

@@ -44,9 +44,8 @@ pub(crate) fn exit_code_for_error(error: &anyhow::Error) -> CliExit {
             TriadErrorKind::Config | TriadErrorKind::Parse | TriadErrorKind::InvalidState => {
                 CliExit::InvalidInput
             }
-            TriadErrorKind::Io
-            | TriadErrorKind::Serialization
-            | TriadErrorKind::VerificationFailed => CliExit::InternalError,
+            TriadErrorKind::Io | TriadErrorKind::Serialization => CliExit::InternalError,
+            TriadErrorKind::VerificationFailed => CliExit::Failure,
         })
         .unwrap_or(CliExit::InternalError)
 }

@@ -16,7 +16,6 @@ use clap::Parser;
 use cli::{Cli, Command};
 use dispatch::{dispatch_command, dispatch_init};
 use exit_codes::{CliExit, exit_code_for_error};
-use output::OutputMode;
 use triad_fs::{CONFIG_FILE_NAME, TriadConfig, init_scaffold};
 
 fn main() -> ExitCode {
@@ -43,7 +42,7 @@ pub(crate) fn execute_cli_from_dir(
         Command::Init(args) => {
             let repo_root = discover_repo_root(working_dir).unwrap_or_else(|| working_dir.clone());
             init_scaffold(&repo_root, args.force).context("failed to create triad scaffold")?;
-            dispatch_init(&repo_root, OutputMode::Human, stdout)
+            dispatch_init(&repo_root, stdout)
         }
         command => {
             let repo_root = discover_repo_root(working_dir)

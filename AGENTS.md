@@ -21,7 +21,6 @@ Current CLI commands:
 
 ## Guardrails
 
-- Do not run `git commit` or `git push`.
 - Do not modify unrelated files while changing a bounded scope.
 - Do not reintroduce `next`, `work`, `accept`, `agent`, runtime backend, or patch draft surface.
 - Do not add command-envelope schemas back into `schemas/`.

@@ -15,17 +15,17 @@ impl CommandCapture {
         command: &str,
         artifact_digests: BTreeMap<String, String>,
     ) -> Result<Evidence, TriadError> {
-        let status = Command::new("sh")
+        let output = Command::new("sh")
             .arg("-lc")
             .arg(command)
-            .status()
+            .output()
             .map_err(|err| {
                 TriadError::Io(format!(
                     "failed to execute verify command `{command}`: {err}"
                 ))
             })?;
 
-        let exit_code = status.code().ok_or_else(|| {
+        let exit_code = output.status.code().ok_or_else(|| {
             TriadError::InvalidState(format!(
                 "verify command terminated without exit code: {command}"
             ))
@@ -46,7 +46,7 @@ impl CommandCapture {
             artifact_digests,
             command: Some(command.into()),
             locator: None,
-            summary: Some(format!("command exited with status {exit_code}")),
+            summary: Some(command_summary(exit_code, &output.stdout, &output.stderr)),
             provenance: Provenance {
                 actor: "system".into(),
                 runtime: Some("shell".into()),
@@ -59,6 +59,14 @@ impl CommandCapture {
             created_at: "unix:0".into(),
         })
     }
+}
+
+fn command_summary(exit_code: i32, stdout: &[u8], stderr: &[u8]) -> String {
+    format!(
+        "command exited with status {exit_code} (stdout: {} bytes, stderr: {} bytes)",
+        stdout.len(),
+        stderr.len()
+    )
 }
 
 #[cfg(test)]
@@ -100,5 +108,22 @@ mod tests {
 
         assert_eq!(success.verdict, Verdict::Pass);
         assert_eq!(failure.verdict, Verdict::Fail);
+    }
+
+    #[test]
+    fn capture_summarizes_command_output_without_printing_contract_data() {
+        let evidence = CommandCapture::capture(
+            &claim(),
+            EvidenceId::from_sequence(3).expect("evidence id should format"),
+            "printf 'stdout-bytes'; printf 'stderr-bytes' >&2",
+            BTreeMap::new(),
+        )
+        .expect("printf should execute");
+
+        assert_eq!(evidence.verdict, Verdict::Pass);
+        assert_eq!(
+            evidence.summary.as_deref(),
+            Some("command exited with status 0 (stdout: 12 bytes, stderr: 12 bytes)")
+        );
     }
 }

@@ -2,7 +2,7 @@
 
 ## Summary
 
-- PASS count: 35
+- PASS count: 37
 - FAIL count: 0
 
 ## Checks
@@ -41,6 +41,8 @@
 - PASS: triad.toml matches minimal v2 config
 - PASS: CLI help matches current command surface
 - PASS: example claims parse via CLI lint
+- PASS: CLI verify emits direct JSON and appends fresh evidence
+- PASS: CLI report emits direct JSON array for all claims
 - PASS: document map includes expected docs
 
 ## Verdict

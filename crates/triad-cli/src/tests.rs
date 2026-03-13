@@ -155,6 +155,87 @@ fn verify_and_report_json_use_single_output_path() {
 }
 
 #[test]
+fn verify_json_suppresses_verify_command_stdout() {
+    let repo_root = temp_dir("verify-json-clean");
+    write_config(
+        &repo_root,
+        &[
+            "printf 'noise on stdout\\n'",
+            "printf 'noise on stderr\\n' >&2",
+        ],
+    );
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001", "--json"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+
+    let verify_exit = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect("verify should succeed");
+    let verify_json: serde_json::Value =
+        serde_json::from_slice(&verify_stdout).expect("verify stdout should remain json");
+
+    assert_eq!(verify_exit as u8, 0);
+    assert_eq!(verify_json["claim_id"], "REQ-auth-001");
+    assert_eq!(verify_json["report"]["status"], "confirmed");
+    assert_eq!(
+        verify_json["evidence_ids"],
+        serde_json::json!(["EVID-000001", "EVID-000002"])
+    );
+}
+
+#[test]
+fn report_all_json_uses_batch_verification_for_multiple_claims() {
+    let repo_root = temp_dir("report-all");
+    write_config(&repo_root, &["true"]);
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+    write_claim(&repo_root, "REQ-auth-002", "Logout success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+
+    let verify_exit = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect("verify should succeed");
+
+    assert_eq!(verify_exit as u8, 0);
+
+    let report_cli = Cli::try_parse_from(["triad", "report", "--all", "--json"])
+        .expect("report cli should parse");
+    let mut report_stdout = Vec::new();
+
+    let report_exit = execute_cli_from_dir(report_cli, &mut report_stdout, &repo_root)
+        .expect("report should succeed");
+    let report_json: serde_json::Value =
+        serde_json::from_slice(&report_stdout).expect("report stdout should be json");
+
+    assert_eq!(
+        report_json,
+        serde_json::json!([
+            {
+                "claim_id": "REQ-auth-001",
+                "status": "confirmed",
+                "reasons": ["fresh hard pass exists"],
+                "fresh_evidence_ids": ["EVID-000001"],
+                "stale_evidence_ids": [],
+                "advisory_evidence_ids": [],
+                "strongest_verdict": "pass"
+            },
+            {
+                "claim_id": "REQ-auth-002",
+                "status": "unsupported",
+                "reasons": ["no hard evidence exists"],
+                "fresh_evidence_ids": [],
+                "stale_evidence_ids": [],
+                "advisory_evidence_ids": [],
+                "strongest_verdict": null
+            }
+        ])
+    );
+    assert_eq!(report_exit as u8, 0);
+}
+
+#[test]
 fn init_and_verify_human_output_are_stable() {
     let repo_root = temp_dir("human-output");
     let init_cli = Cli::try_parse_from(["triad", "init"]).expect("init cli should parse");

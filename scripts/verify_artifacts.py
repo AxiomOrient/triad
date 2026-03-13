@@ -67,6 +67,13 @@ def run_command(args: list[str]) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
+def parse_json_output(raw: str, context: str) -> object:
+    try:
+        return json.loads(raw)
+    except Exception as exc:
+        raise ValueError(f"{context} JSON parse failed: {exc}") from exc
+
+
 def build_report() -> tuple[list[str], int, int]:
     lines: list[str] = []
     ok_count = 0
@@ -158,7 +165,7 @@ def build_report() -> tuple[list[str], int, int]:
     )
     if lint_code == 0:
         try:
-            lint_json = json.loads(lint_stdout)
+            lint_json = parse_json_output(lint_stdout, "lint")
             claim_ids = [claim["claim_id"] for claim in lint_json["claims"]]
             if lint_json["ok"] is True and "REQ-auth-001" in claim_ids and "REQ-auth-002" in claim_ids:
                 lines.append(ok("example claims parse via CLI lint"))
@@ -171,6 +178,61 @@ def build_report() -> tuple[list[str], int, int]:
             fail_count += 1
     else:
         lines.append(fail(f"CLI lint failed: stdout={lint_stdout!r} stderr={lint_stderr!r}"))
+        fail_count += 1
+
+    verify_code, verify_stdout, verify_stderr = run_command(
+        ["cargo", "run", "-p", "triad-cli", "--", "verify", "--claim", "REQ-auth-001", "--json"]
+    )
+    if verify_code == 0:
+        try:
+            verify_json = parse_json_output(verify_stdout, "verify")
+            verify_claim_id = verify_json["claim_id"]
+            report = verify_json["report"]
+            evidence_ids = verify_json["evidence_ids"]
+            if (
+                verify_claim_id == "REQ-auth-001"
+                and report["claim_id"] == "REQ-auth-001"
+                and report["status"] == "confirmed"
+                and isinstance(evidence_ids, list)
+                and len(evidence_ids) == 2
+            ):
+                lines.append(ok("CLI verify emits direct JSON and appends fresh evidence"))
+                ok_count += 1
+            else:
+                lines.append(fail(f"verify output did not match expected contract: {verify_stdout!r}"))
+                fail_count += 1
+        except Exception as exc:
+            lines.append(fail(str(exc)))
+            fail_count += 1
+    else:
+        lines.append(fail(f"CLI verify failed: stdout={verify_stdout!r} stderr={verify_stderr!r}"))
+        fail_count += 1
+
+    report_code, report_stdout, report_stderr = run_command(
+        ["cargo", "run", "-p", "triad-cli", "--", "report", "--all", "--json"]
+    )
+    if report_code == 0:
+        try:
+            report_json = parse_json_output(report_stdout, "report")
+            if not isinstance(report_json, list):
+                raise ValueError(f"report output was not a JSON array: {report_stdout!r}")
+            reports_by_id = {report["claim_id"]: report for report in report_json}
+            if (
+                "REQ-auth-001" in reports_by_id
+                and "REQ-auth-002" in reports_by_id
+                and reports_by_id["REQ-auth-001"]["status"] == "confirmed"
+                and len(reports_by_id["REQ-auth-001"]["fresh_evidence_ids"]) >= 2
+            ):
+                lines.append(ok("CLI report emits direct JSON array for all claims"))
+                ok_count += 1
+            else:
+                lines.append(fail(f"report output did not match expected contract: {report_stdout!r}"))
+                fail_count += 1
+        except Exception as exc:
+            lines.append(fail(str(exc)))
+            fail_count += 1
+    else:
+        lines.append(fail(f"CLI report failed: stdout={report_stdout!r} stderr={report_stderr!r}"))
         fail_count += 1
 
     doc_map = (DOCS / "00-document-map.md").read_text(encoding="utf-8")

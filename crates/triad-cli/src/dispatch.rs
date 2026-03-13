@@ -23,18 +23,14 @@ pub(crate) fn dispatch_command(
     stdout: &mut impl Write,
 ) -> Result<CliExit> {
     match command {
-        Command::Init(_) => Err(anyhow!("init must be handled before runtime dispatch")),
+        Command::Init(_) => unreachable!("init must be handled before runtime dispatch"),
         Command::Lint(args) => dispatch_lint(config, args, stdout),
         Command::Verify(args) => dispatch_verify(config, args, stdout),
         Command::Report(args) => dispatch_report(config, args, stdout),
     }
 }
 
-pub(crate) fn dispatch_init(
-    repo_root: &Utf8Path,
-    output_mode: OutputMode,
-    stdout: &mut impl Write,
-) -> Result<CliExit> {
+pub(crate) fn dispatch_init(repo_root: &Utf8Path, stdout: &mut impl Write) -> Result<CliExit> {
     let output = InitOutput {
         repo_root: repo_root.as_str().to_string(),
         config_path: repo_root.join("triad.toml").as_str().to_string(),
@@ -43,7 +39,7 @@ pub(crate) fn dispatch_init(
             .as_str()
             .to_string(),
     };
-    write_init(stdout, output_mode, &output)?;
+    write_init(stdout, OutputMode::Human, &output)?;
     Ok(CliExit::Success)
 }
 

@@ -86,12 +86,7 @@ pub(crate) fn write_verify(
 ) -> Result<()> {
     match mode {
         OutputMode::Human => {
-            writeln!(
-                stdout,
-                "{}  {}",
-                output.claim_id,
-                format_status(&output.report)
-            )?;
+            writeln!(stdout, "{}  {}", output.claim_id, output.report.status)?;
             writeln!(stdout, "Evidence: {}", render_ids(&output.evidence_ids))?;
         }
         OutputMode::Json => write_json(stdout, output)?,
@@ -107,7 +102,7 @@ pub(crate) fn write_report(
     match mode {
         OutputMode::Human => {
             for report in reports {
-                writeln!(stdout, "{}  {}", report.claim_id, format_status(report))?;
+                writeln!(stdout, "{}  {}", report.claim_id, report.status)?;
             }
         }
         OutputMode::Json => write_json(stdout, reports)?,
@@ -129,15 +124,5 @@ fn render_ids(ids: &[EvidenceId]) -> String {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ")
-    }
-}
-
-fn format_status(report: &ClaimReport) -> &'static str {
-    match report.status {
-        triad_core::ClaimStatus::Confirmed => "confirmed",
-        triad_core::ClaimStatus::Contradicted => "contradicted",
-        triad_core::ClaimStatus::Blocked => "blocked",
-        triad_core::ClaimStatus::Stale => "stale",
-        triad_core::ClaimStatus::Unsupported => "unsupported",
     }
 }
