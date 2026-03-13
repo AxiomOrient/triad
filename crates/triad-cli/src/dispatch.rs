@@ -1,9 +1,8 @@
-use std::collections::BTreeMap;
 use std::io::Write;
 
 use anyhow::{Result, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
-use triad_core::{Claim, ClaimId, verify_claim, verify_many};
+use triad_core::{Claim, ClaimId, verify_claim};
 use triad_fs::{
     CanonicalTriadConfig, ClaimMarkdownAdapter, CommandCapture, EvidenceNdjsonStore,
     SnapshotAdapter,
@@ -97,19 +96,20 @@ fn dispatch_verify(
 
     let mut appended_ids = Vec::new();
     for command in resolve_verify_commands(config, claim)? {
-        let evidence_id = EvidenceNdjsonStore::next_evidence_id(&config.paths.evidence_file)?;
         let evidence_artifacts =
             SnapshotAdapter::filter(&artifact_digests, &command.artifact_include);
-        let evidence = CommandCapture::capture(
-            &config.repo_root,
-            &claim.claim,
-            evidence_id.clone(),
-            &command.command,
-            command.locator.as_deref(),
-            evidence_artifacts,
-        )?;
-        EvidenceNdjsonStore::append(&config.paths.evidence_file, &evidence)?;
-        appended_ids.push(evidence_id);
+        let evidence =
+            EvidenceNdjsonStore::append_new(&config.paths.evidence_file, move |evidence_id| {
+                CommandCapture::capture(
+                    &config.repo_root,
+                    &claim.claim,
+                    evidence_id,
+                    &command.command,
+                    command.locator.as_deref(),
+                    evidence_artifacts,
+                )
+            })?;
+        appended_ids.push(evidence.id.clone());
     }
 
     let evidence = EvidenceNdjsonStore::read(&config.paths.evidence_file)?;
@@ -138,16 +138,10 @@ fn dispatch_report(
         let claim = find_claim(&claims, &claim_id)?;
         vec![verify_claim(&claim.claim, &artifact_digests, &evidence)]
     } else {
-        let (claim_refs, snapshots) = claims
+        claims
             .iter()
-            .map(|c| {
-                (
-                    c.claim.clone(),
-                    (c.claim.id.clone(), artifact_digests.clone()),
-                )
-            })
-            .unzip::<_, _, Vec<_>, BTreeMap<_, _>>();
-        verify_many(&claim_refs, &snapshots, &evidence)
+            .map(|claim| verify_claim(&claim.claim, &artifact_digests, &evidence))
+            .collect()
     };
 
     let exit = CliExit::for_reports(&reports);

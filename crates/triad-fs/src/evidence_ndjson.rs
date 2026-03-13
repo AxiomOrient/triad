@@ -1,7 +1,8 @@
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 use camino::Utf8Path;
+use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use triad_core::{Evidence, EvidenceId, TriadError};
 
@@ -10,51 +11,32 @@ pub struct EvidenceNdjsonStore;
 
 impl EvidenceNdjsonStore {
     pub fn next_evidence_id(path: &Utf8Path) -> Result<EvidenceId, TriadError> {
-        let rows = Self::read_rows::<EvidenceIdRow>(path, "evidence row")?;
-        let max_sequence = rows
-            .into_iter()
-            .map(|row| row.id.sequence_number())
-            .max()
-            .unwrap_or(0);
-        EvidenceId::from_sequence(max_sequence + 1)
-    }
-
-    pub fn append(path: &Utf8Path, evidence: &Evidence) -> Result<(), TriadError> {
-        ensure_parent_dir(path)?;
         if !path.exists() {
-            fs::write(path, "").map_err(|err| {
-                TriadError::Io(format!("failed to create evidence log {path}: {err}"))
-            })?;
+            return EvidenceId::from_sequence(1);
         }
 
         let content = fs::read_to_string(path)
             .map_err(|err| TriadError::Io(format!("failed to read evidence log {path}: {err}")))?;
-        if !content.is_empty() && !content.ends_with('\n') {
-            return Err(TriadError::InvalidState(format!(
-                "evidence log must end with newline before append: {path}"
-            )));
-        }
+        Self::next_evidence_id_from_content(&content)
+    }
 
-        let expected_id = Self::next_evidence_id(path)?;
-        if evidence.id != expected_id {
-            return Err(TriadError::InvalidState(format!(
-                "evidence id must be next monotonic id for {path}: expected {expected_id}, got {}",
-                evidence.id
-            )));
-        }
+    pub fn append(path: &Utf8Path, evidence: &Evidence) -> Result<(), TriadError> {
+        let evidence = evidence.clone();
+        Self::append_new(path, move |_| Ok(evidence)).map(|_| ())
+    }
 
-        let serialized = serde_json::to_string(evidence).map_err(|err| {
-            TriadError::Serialization(format!(
-                "failed to serialize evidence {}: {err}",
-                evidence.id
-            ))
-        })?;
-        let mut file = OpenOptions::new()
-            .append(true)
-            .open(path)
-            .map_err(|err| TriadError::Io(format!("failed to open evidence log {path}: {err}")))?;
-        writeln!(file, "{serialized}")
-            .map_err(|err| TriadError::Io(format!("failed to append evidence to {path}: {err}")))
+    pub fn append_new<F>(path: &Utf8Path, build: F) -> Result<Evidence, TriadError>
+    where
+        F: FnOnce(EvidenceId) -> Result<Evidence, TriadError>,
+    {
+        ensure_parent_dir(path)?;
+        let mut file = open_evidence_log(path)?;
+        file.lock_exclusive()
+            .map_err(|err| TriadError::Io(format!("failed to lock evidence log {path}: {err}")))?;
+
+        let append_result = Self::append_new_locked(path, &mut file, build);
+        drop(file);
+        append_result
     }
 
     pub fn read(path: &Utf8Path) -> Result<Vec<Evidence>, TriadError> {
@@ -71,7 +53,17 @@ impl EvidenceNdjsonStore {
 
         let content = fs::read_to_string(path)
             .map_err(|err| TriadError::Io(format!("failed to read evidence log {path}: {err}")))?;
+        Self::read_rows_from_str(&content, row_kind, path)
+    }
 
+    fn read_rows_from_str<T>(
+        content: &str,
+        row_kind: &str,
+        path: &Utf8Path,
+    ) -> Result<Vec<T>, TriadError>
+    where
+        T: DeserializeOwned,
+    {
         content
             .lines()
             .enumerate()
@@ -88,11 +80,69 @@ impl EvidenceNdjsonStore {
             })
             .collect()
     }
+
+    fn append_new_locked<F>(
+        path: &Utf8Path,
+        file: &mut File,
+        build: F,
+    ) -> Result<Evidence, TriadError>
+    where
+        F: FnOnce(EvidenceId) -> Result<Evidence, TriadError>,
+    {
+        let content = read_locked_content(path, file)?;
+        if !content.is_empty() && !content.ends_with('\n') {
+            return Err(TriadError::InvalidState(format!(
+                "evidence log must end with newline before append: {path}"
+            )));
+        }
+
+        let expected_id = Self::next_evidence_id_from_content(&content)?;
+        let evidence = build(expected_id.clone())?;
+        if evidence.id != expected_id {
+            return Err(TriadError::InvalidState(format!(
+                "evidence id must be next monotonic id for {path}: expected {expected_id}, got {}",
+                evidence.id
+            )));
+        }
+
+        let serialized = serde_json::to_string(&evidence).map_err(|err| {
+            TriadError::Serialization(format!(
+                "failed to serialize evidence {}: {err}",
+                evidence.id
+            ))
+        })?;
+        writeln!(file, "{serialized}")
+            .map_err(|err| TriadError::Io(format!("failed to append evidence to {path}: {err}")))?;
+        Ok(evidence)
+    }
+
+    fn next_evidence_id_from_content(content: &str) -> Result<EvidenceId, TriadError> {
+        let rows = Self::read_rows_from_str::<EvidenceIdRow>(
+            content,
+            "evidence row",
+            Utf8Path::new("<memory>"),
+        )?;
+        let max_sequence = rows
+            .into_iter()
+            .map(|row| row.id.sequence_number())
+            .max()
+            .unwrap_or(0);
+        EvidenceId::from_sequence(max_sequence + 1)
+    }
 }
 
 #[derive(serde::Deserialize)]
 struct EvidenceIdRow {
     id: EvidenceId,
+}
+
+fn open_evidence_log(path: &Utf8Path) -> Result<File, TriadError> {
+    OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)
+        .map_err(|err| TriadError::Io(format!("failed to open evidence log {path}: {err}")))
 }
 
 fn ensure_parent_dir(path: &Utf8Path) -> Result<(), TriadError> {
@@ -101,6 +151,15 @@ fn ensure_parent_dir(path: &Utf8Path) -> Result<(), TriadError> {
         .ok_or_else(|| TriadError::InvalidState(format!("path has no parent directory: {path}")))?;
     fs::create_dir_all(parent)
         .map_err(|err| TriadError::Io(format!("failed to create directory {parent}: {err}")))
+}
+
+fn read_locked_content(path: &Utf8Path, file: &mut File) -> Result<String, TriadError> {
+    file.seek(SeekFrom::Start(0))
+        .map_err(|err| TriadError::Io(format!("failed to seek evidence log {path}: {err}")))?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)
+        .map_err(|err| TriadError::Io(format!("failed to read evidence log {path}: {err}")))?;
+    Ok(content)
 }
 
 fn normalize_serde_row_error(message: &str) -> &str {
@@ -115,6 +174,9 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::process;
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+    use std::time::Duration;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use camino::Utf8PathBuf;
@@ -184,5 +246,53 @@ mod tests {
 
         let error = EvidenceNdjsonStore::read(&path).expect_err("malformed row should fail");
         assert!(error.to_string().contains("invalid evidence row at line 2"));
+    }
+
+    #[test]
+    fn append_new_serializes_concurrent_writers() {
+        let path = temp_file("concurrent");
+        let start = Arc::new(Barrier::new(2));
+
+        let handles = (0..2)
+            .map(|_| {
+                let path = path.clone();
+                let start = Arc::clone(&start);
+                thread::spawn(move || {
+                    start.wait();
+                    EvidenceNdjsonStore::append_new(&path, |id| {
+                        thread::sleep(Duration::from_millis(25));
+                        Ok(evidence(id.sequence_number()))
+                    })
+                    .expect("append should succeed")
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut appended_ids = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("thread should complete").id)
+            .collect::<Vec<_>>();
+        appended_ids.sort();
+
+        assert_eq!(
+            appended_ids,
+            vec![
+                EvidenceId::from_sequence(1).expect("evidence id should format"),
+                EvidenceId::from_sequence(2).expect("evidence id should format"),
+            ]
+        );
+
+        let stored_ids = EvidenceNdjsonStore::read(&path)
+            .expect("rows should read")
+            .into_iter()
+            .map(|row| row.id)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            stored_ids,
+            vec![
+                EvidenceId::from_sequence(1).expect("evidence id should format"),
+                EvidenceId::from_sequence(2).expect("evidence id should format"),
+            ]
+        );
     }
 }

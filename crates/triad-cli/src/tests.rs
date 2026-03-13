@@ -391,6 +391,55 @@ fn report_all_json_uses_batch_verification_for_multiple_claims() {
 }
 
 #[test]
+fn report_all_matches_per_claim_results() {
+    let repo_root = temp_dir("report-all-matches-claim");
+    fs::create_dir_all(repo_root.join("src")).expect("src dir should create");
+    fs::write(repo_root.join("src/shared.rs"), "before").expect("shared file should write");
+    write_config_body(
+        &repo_root,
+        r#"[
+  { command = "true", locator = "claim:{claim_id}" }
+]"#,
+        "[\"spec/claims/**\", \"src/**\"]",
+    );
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+    write_claim(&repo_root, "REQ-auth-002", "Logout success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+    let verify_exit = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect("verify should succeed");
+    assert_eq!(verify_exit as u8, 0);
+
+    fs::write(repo_root.join("src/shared.rs"), "after").expect("shared file should write");
+
+    let report_all_cli = Cli::try_parse_from(["triad", "report", "--all", "--json"])
+        .expect("report --all cli should parse");
+    let mut report_all_stdout = Vec::new();
+    let report_all_exit = execute_cli_from_dir(report_all_cli, &mut report_all_stdout, &repo_root)
+        .expect("report --all should succeed");
+    let report_all_json: serde_json::Value =
+        serde_json::from_slice(&report_all_stdout).expect("report --all stdout should be json");
+
+    let report_claim_cli =
+        Cli::try_parse_from(["triad", "report", "--claim", "REQ-auth-001", "--json"])
+            .expect("report --claim cli should parse");
+    let mut report_claim_stdout = Vec::new();
+    let report_claim_exit =
+        execute_cli_from_dir(report_claim_cli, &mut report_claim_stdout, &repo_root)
+            .expect("report --claim should succeed");
+    let report_claim_json: serde_json::Value =
+        serde_json::from_slice(&report_claim_stdout).expect("report --claim stdout should be json");
+
+    assert_eq!(report_all_exit as u8, 0);
+    assert_eq!(report_claim_exit as u8, 0);
+    assert_eq!(report_all_json[0], report_claim_json[0]);
+    assert_eq!(report_all_json[1]["claim_id"], "REQ-auth-002");
+    assert_eq!(report_all_json[1]["status"], "unsupported");
+}
+
+#[test]
 fn init_and_verify_human_output_are_stable() {
     let repo_root = temp_dir("human-output");
     let init_cli = Cli::try_parse_from(["triad", "init"]).expect("init cli should parse");
