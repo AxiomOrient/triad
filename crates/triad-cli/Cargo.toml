@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+description = "Reference CLI for deterministic claim verification with triad."
+readme = "../../README.md"
 
 [[bin]]
 name = "triad"
@@ -15,5 +18,5 @@ camino.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-triad-core = { path = "../triad-core" }
-triad-fs = { path = "../triad-fs" }
+triad-core = { version = "0.3.1", path = "../triad-core" }
+triad-fs = { version = "0.3.1", path = "../triad-fs" }

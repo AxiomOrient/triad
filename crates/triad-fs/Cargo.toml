@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+description = "Filesystem adapter for triad claims, config, snapshots, and evidence."
+readme = "../../README.md"
 
 [dependencies]
 camino.workspace = true
@@ -12,4 +15,4 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 toml.workspace = true
-triad-core = { path = "../triad-core" }
+triad-core = { version = "0.3.1", path = "../triad-core" }
