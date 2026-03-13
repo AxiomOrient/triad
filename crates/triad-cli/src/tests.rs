@@ -223,6 +223,81 @@ fn verify_expands_claim_bound_structured_commands() {
 }
 
 #[test]
+fn verify_expands_claim_path_in_structured_commands() {
+    let repo_root = temp_dir("verify-claim-path");
+    write_config_body(
+        &repo_root,
+        r#"[
+  { command = "test \"{claim_path}\" = \"spec/claims/REQ-auth-001.md\"", locator = "claim-path:{claim_path}", artifacts = ["spec/claims/**"] }
+]"#,
+        "[\"spec/claims/**\"]",
+    );
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001", "--json"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+
+    let verify_exit = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect("verify should succeed");
+    let verify_json: serde_json::Value =
+        serde_json::from_slice(&verify_stdout).expect("verify stdout should be json");
+
+    assert_eq!(verify_exit as u8, 0);
+    assert_eq!(verify_json["report"]["status"], "confirmed");
+
+    let evidence_path = repo_root.join(".triad/evidence.ndjson");
+    let evidence = fs::read_to_string(evidence_path).expect("evidence should read");
+    assert!(evidence.contains(
+        "\"command\":\"test \\\"spec/claims/REQ-auth-001.md\\\" = \\\"spec/claims/REQ-auth-001.md\\\"\""
+    ));
+    assert!(evidence.contains("\"locator\":\"claim-path:spec/claims/REQ-auth-001.md\""));
+}
+
+#[test]
+fn report_uses_snapshot_include_when_structured_command_omits_artifacts() {
+    let repo_root = temp_dir("report-fallback-artifacts");
+    fs::create_dir_all(repo_root.join("src")).expect("src dir should create");
+    fs::write(repo_root.join("src/unrelated.rs"), "before").expect("unrelated file should write");
+    write_config_body(
+        &repo_root,
+        r#"[
+  { command = "true", locator = "claim:{claim_id}" }
+]"#,
+        "[\"spec/claims/**\", \"src/**\"]",
+    );
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+
+    let verify_cli = Cli::try_parse_from(["triad", "verify", "--claim", "REQ-auth-001"])
+        .expect("verify cli should parse");
+    let mut verify_stdout = Vec::new();
+
+    let verify_exit = execute_cli_from_dir(verify_cli, &mut verify_stdout, &repo_root)
+        .expect("verify should succeed");
+
+    assert_eq!(verify_exit as u8, 0);
+
+    fs::write(repo_root.join("src/unrelated.rs"), "after").expect("unrelated file should write");
+
+    let report_cli = Cli::try_parse_from(["triad", "report", "--claim", "REQ-auth-001", "--json"])
+        .expect("report cli should parse");
+    let mut report_stdout = Vec::new();
+
+    let report_exit = execute_cli_from_dir(report_cli, &mut report_stdout, &repo_root)
+        .expect("report should succeed");
+    let report_json: serde_json::Value =
+        serde_json::from_slice(&report_stdout).expect("report stdout should be json");
+
+    assert_eq!(report_exit as u8, 0);
+    assert_eq!(report_json[0]["claim_id"], "REQ-auth-001");
+    assert_eq!(report_json[0]["status"], "stale");
+    assert_eq!(
+        report_json[0]["reasons"],
+        serde_json::json!(["only stale hard evidence exists"])
+    );
+}
+
+#[test]
 fn report_all_ignores_unrelated_changes_outside_recorded_subset() {
     let repo_root = temp_dir("report-subset");
     fs::create_dir_all(repo_root.join("src")).expect("src dir should create");

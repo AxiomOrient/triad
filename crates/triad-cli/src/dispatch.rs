@@ -140,7 +140,12 @@ fn dispatch_report(
     } else {
         let (claim_refs, snapshots) = claims
             .iter()
-            .map(|c| (c.claim.clone(), (c.claim.id.clone(), artifact_digests.clone())))
+            .map(|c| {
+                (
+                    c.claim.clone(),
+                    (c.claim.id.clone(), artifact_digests.clone()),
+                )
+            })
             .unzip::<_, _, Vec<_>, BTreeMap<_, _>>();
         verify_many(&claim_refs, &snapshots, &evidence)
     };

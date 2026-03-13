@@ -53,6 +53,7 @@ pub struct Evidence {
 - `Advisory` evidence는 `reasons`에는 들어가지만 status는 바꾸지 않는다.
 - evidence log는 `.triad/evidence.ndjson` append-only NDJSON이다.
 - shell capture 경로는 expanded `command`, optional `locator`, optional `provenance.commit`, runtime `created_at`를 기록한다.
+- 현재 reference shell capture는 exit code `0`을 `pass`, 그 외를 `fail`로만 기록한다. 따라서 `unknown` verdict는 자동 생성하지 않으며, `blocked` status는 seeded/manual/non-shell evidence 경로가 있어야 나타난다.
 
 ## Freshness And Status
 

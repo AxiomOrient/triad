@@ -60,6 +60,7 @@ commands = [
 
 - string entry는 legacy repo-wide snapshot capture를 유지한다.
 - object entry는 claim template expansion과 evidence-local artifact subset capture를 허용한다.
+- 현재 reference shell adapter는 exit code `0 => pass`, non-zero `=> fail`만 생성한다. `unknown` verdict와 그에 따른 `blocked` report는 seeded/manual/non-shell evidence 경로가 필요하다.
 
 ## Verification Gate
 
