@@ -1,3 +1,4 @@
+use camino::Utf8PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -7,6 +8,13 @@ use clap::{Args, Parser, Subcommand};
     about = "Headless deterministic verification kernel CLI"
 )]
 pub struct Cli {
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        help = "Use PATH as the triad repo root instead of discovering from the working directory"
+    )]
+    pub repo_root: Option<Utf8PathBuf>,
     #[command(subcommand)]
     pub command: Command,
 }

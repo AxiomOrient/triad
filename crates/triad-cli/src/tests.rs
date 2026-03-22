@@ -65,13 +65,14 @@ fn cli_rejects_legacy_commands() {
 fn cli_help_lists_only_new_commands() {
     let help = Cli::command().render_long_help().to_string();
 
+    assert!(help.contains("--repo-root"));
     assert!(help.contains("init"));
     assert!(help.contains("lint"));
     assert!(help.contains("verify"));
     assert!(help.contains("report"));
-    assert!(!help.contains("work"));
-    assert!(!help.contains("accept"));
-    assert!(!help.contains("agent"));
+    assert!(!help.contains("\n  work"));
+    assert!(!help.contains("\n  accept"));
+    assert!(!help.contains("\n  agent"));
 }
 
 #[test]
@@ -91,6 +92,50 @@ fn init_creates_minimal_scaffold() {
             .expect("config should read")
             .contains("\"triad.toml\"")
     );
+}
+
+#[test]
+fn init_uses_relative_repo_root_override_from_working_dir() {
+    let working_dir = temp_dir("init-repo-root-working");
+    let repo_root = working_dir.join("nested/repo");
+    let cli = Cli::try_parse_from(["triad", "--repo-root", "nested/repo", "init"])
+        .expect("cli should parse");
+    let mut stdout = Vec::new();
+
+    let exit = execute_cli_from_dir(cli, &mut stdout, &working_dir).expect("init should succeed");
+
+    assert_eq!(exit as u8, 0);
+    assert!(repo_root.join("triad.toml").is_file());
+    assert!(repo_root.join("spec/claims").is_dir());
+    assert!(repo_root.join(".triad/evidence.ndjson").is_file());
+    assert!(!working_dir.join("triad.toml").is_file());
+}
+
+#[test]
+fn verify_uses_explicit_repo_root_outside_repo_tree() {
+    let repo_root = temp_dir("verify-repo-root-target");
+    let working_dir = temp_dir("verify-repo-root-working");
+    write_config(&repo_root, &["true"]);
+    write_claim(&repo_root, "REQ-auth-001", "Login success");
+    let cli = Cli::try_parse_from([
+        "triad",
+        "--repo-root",
+        repo_root.as_str(),
+        "verify",
+        "--claim",
+        "REQ-auth-001",
+        "--json",
+    ])
+    .expect("cli should parse");
+    let mut stdout = Vec::new();
+
+    let exit = execute_cli_from_dir(cli, &mut stdout, &working_dir).expect("verify should succeed");
+    let json: serde_json::Value = serde_json::from_slice(&stdout).expect("stdout should be json");
+
+    assert_eq!(exit as u8, 0);
+    assert_eq!(json["claim_id"], "REQ-auth-001");
+    assert_eq!(json["report"]["status"], "confirmed");
+    assert!(repo_root.join(".triad/evidence.ndjson").is_file());
 }
 
 #[test]

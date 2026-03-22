@@ -6,8 +6,6 @@
 
 It keeps the product surface intentionally small. A `Claim` is the only canonical work unit. The reference surface is a pure core, a filesystem adapter, and a thin CLI.
 
-Language entrypoints: [English](./README.md) | [한국어](./i18n/ko/README.md) | [Español](./i18n/es/README.md) | [中文](./i18n/zh/README.md)
-
 ## What It Includes
 
 - `triad-core`
@@ -36,6 +34,19 @@ Out of scope: `next`, `work`, `accept`, `agent`, runtime backends, and patch-dra
 - `stale`
 - `unsupported`
 
+## What A Claim Is
+
+A claim is one small statement that should be true in the repository right now.
+Think of it as a verification target that sits above any single test case.
+
+Examples:
+
+- `REQ-auth-001`: valid login succeeds
+- `REQ-api-003`: missing user returns `404`
+- `REQ-billing-002`: failed payment does not finalize the order
+
+A good claim is small enough that you can gather concrete evidence for it.
+
 ## Quick Start
 
 ```bash
@@ -43,6 +54,7 @@ cargo run -p triad-cli -- init
 cargo run -p triad-cli -- lint --all
 cargo run -p triad-cli -- verify --claim REQ-auth-001
 cargo run -p triad-cli -- report --all --json
+cargo run -p triad-cli -- --repo-root ../triad-repo report --all --json
 ```
 
 ## CLI Contract
@@ -51,6 +63,25 @@ cargo run -p triad-cli -- report --all --json
 - `triad lint [--claim <CLAIM_ID> | --all] [--json]`
 - `triad verify --claim <CLAIM_ID> [--json]`
 - `triad report [--claim <CLAIM_ID> | --all] [--json]`
+
+`triad` discovers `triad.toml` by walking ancestors from the current working directory.
+`--repo-root <PATH>` bypasses discovery and uses `PATH` as the repo root. Relative paths resolve from the current working directory.
+
+What each command is for:
+
+- `init`
+  Create the minimal triad scaffold for a repository.
+- `lint`
+  Check claim files and config contract without running verification commands.
+- `verify`
+  Run verification commands for one claim, append evidence, and return the current report for that claim.
+- `report`
+  Recompute reports from stored evidence plus the current artifact snapshot without running verification commands.
+
+Operational rule:
+
+- If you need the report that includes newly created evidence, run `verify` first and then `report`.
+- Starting `verify` and `report` at the same time does not guarantee that `report` will observe the evidence being appended by `verify`.
 
 `--json` writes direct JSON objects or arrays. There is no envelope wrapper.
 
@@ -95,7 +126,6 @@ triad/
 │  ├─ triad-fs/
 │  └─ triad-cli/
 ├─ docs/
-├─ i18n/
 ├─ schemas/
 ├─ scripts/
 ├─ spec/
@@ -123,6 +153,7 @@ Useful smoke checks:
 cargo run -p triad-cli -- lint --all --json
 cargo run -p triad-cli -- verify --claim REQ-auth-001 --json
 cargo run -p triad-cli -- report --all --json
+cargo run -p triad-cli -- --repo-root ../triad-repo report --all --json
 ```
 
 ## Read More

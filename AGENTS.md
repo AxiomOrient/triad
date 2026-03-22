@@ -38,4 +38,6 @@ Current CLI commands:
 
 ## Code Quality
 
-Follow [`PATTERNS.md`](./PATTERNS.md).
+- Prefer pure data-in/data-out helpers before adding new I/O branches.
+- Split decision and execution when a command both plans and mutates state.
+- Keep docs aligned with the current `triad-core` / `triad-fs` / `triad-cli` surface only.

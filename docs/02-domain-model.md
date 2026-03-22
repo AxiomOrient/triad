@@ -28,6 +28,8 @@ pub struct Claim {
 
 - `Claim`은 유일한 canonical unit이다.
 - `revision_digest`는 canonical claim markdown bytes의 `sha256`이다.
+- Claim은 "지금 참이어야 하는 작은 약속 하나"를 표현한다.
+- 구현 단위나 파일 단위가 아니라 검증 단위다. 하나의 claim은 한 번에 설명하고 판정할 수 있을 정도로 작아야 한다.
 
 ## Evidence
 
@@ -111,3 +113,5 @@ structured command object는 아래 필드를 쓴다.
 - `artifacts`: optional artifact scope glob list
 
 `triad verify --claim <CLAIM_ID>`는 command template 안의 `{claim_id}`와 `{claim_path}`를 선택된 claim 기준으로 확장한 뒤 실행한다.
+`triad report`는 verify command를 다시 실행하지 않고, 저장된 evidence와 현재 artifact snapshot만으로 판정한다.
+따라서 freshly appended evidence를 반드시 반영한 report가 필요하면 `verify` 완료 후 `report`를 순서대로 호출해야 한다.

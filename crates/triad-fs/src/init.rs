@@ -1,23 +1,79 @@
 use std::fs;
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use triad_core::TriadError;
 
 use crate::config::{CONFIG_FILE_NAME, TriadConfig};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InitScaffoldPlan {
+    steps: Vec<InitStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum InitStep {
+    Dir {
+        path: Utf8PathBuf,
+    },
+    TextFile {
+        path: Utf8PathBuf,
+        contents: String,
+        force: bool,
+    },
+    File {
+        path: Utf8PathBuf,
+        force: bool,
+    },
+}
+
 pub fn init_scaffold(repo_root: &Utf8Path, force: bool) -> Result<(), TriadError> {
+    let plan = plan_init_scaffold(repo_root, force)?;
+    apply_init_scaffold(&plan)
+}
+
+fn plan_init_scaffold(repo_root: &Utf8Path, force: bool) -> Result<InitScaffoldPlan, TriadError> {
     let config = TriadConfig::bootstrap_defaults().canonicalize(repo_root)?;
+    let config_path = repo_root.join(CONFIG_FILE_NAME);
+    let evidence_parent = parent_dir(&config.paths.evidence_file)?;
 
-    ensure_dir(&config.paths.claim_dir)?;
-    ensure_parent_dir(&config.paths.evidence_file)?;
-    ensure_text_file(
-        &repo_root.join(CONFIG_FILE_NAME),
-        &TriadConfig::bootstrap_toml()?,
-        force,
-    )?;
-    ensure_file(&config.paths.evidence_file, force)?;
+    Ok(InitScaffoldPlan {
+        steps: vec![
+            InitStep::Dir {
+                path: config.paths.claim_dir,
+            },
+            InitStep::Dir {
+                path: evidence_parent,
+            },
+            InitStep::TextFile {
+                path: config_path,
+                contents: TriadConfig::bootstrap_toml()?,
+                force,
+            },
+            InitStep::File {
+                path: config.paths.evidence_file,
+                force,
+            },
+        ],
+    })
+}
 
+fn apply_init_scaffold(plan: &InitScaffoldPlan) -> Result<(), TriadError> {
+    for step in &plan.steps {
+        apply_init_step(step)?;
+    }
     Ok(())
+}
+
+fn apply_init_step(step: &InitStep) -> Result<(), TriadError> {
+    match step {
+        InitStep::Dir { path } => ensure_dir(path),
+        InitStep::TextFile {
+            path,
+            contents,
+            force,
+        } => ensure_text_file(path, contents, *force),
+        InitStep::File { path, force } => ensure_file(path, *force),
+    }
 }
 
 fn ensure_dir(path: &Utf8Path) -> Result<(), TriadError> {
@@ -25,11 +81,10 @@ fn ensure_dir(path: &Utf8Path) -> Result<(), TriadError> {
         .map_err(|err| TriadError::Io(format!("failed to create directory {}: {err}", path)))
 }
 
-fn ensure_parent_dir(path: &Utf8Path) -> Result<(), TriadError> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| TriadError::InvalidState(format!("path has no parent directory: {path}")))?;
-    ensure_dir(parent)
+fn parent_dir(path: &Utf8Path) -> Result<Utf8PathBuf, TriadError> {
+    path.parent()
+        .map(Utf8Path::to_owned)
+        .ok_or_else(|| TriadError::InvalidState(format!("path has no parent directory: {path}")))
 }
 
 fn ensure_text_file(path: &Utf8Path, contents: &str, force: bool) -> Result<(), TriadError> {
@@ -58,7 +113,9 @@ mod tests {
 
     use camino::Utf8PathBuf;
 
-    use super::init_scaffold;
+    use crate::config::TriadConfig;
+
+    use super::{InitStep, init_scaffold, plan_init_scaffold};
 
     fn temp_dir(label: &str) -> Utf8PathBuf {
         let unique = SystemTime::now()
@@ -105,5 +162,36 @@ mod tests {
         let updated = fs::read_to_string(repo_root.join("triad.toml")).expect("config should read");
         assert!(updated.contains("version = 2"));
         assert!(updated.contains("claim_dir = \"spec/claims\""));
+    }
+
+    #[test]
+    fn plan_init_scaffold_is_deterministic_from_inputs() {
+        let repo_root = Utf8PathBuf::from("/repo");
+
+        let first = plan_init_scaffold(&repo_root, true).expect("plan should succeed");
+        let second = plan_init_scaffold(&repo_root, true).expect("plan should succeed");
+
+        assert_eq!(first, second);
+        assert_eq!(
+            first.steps,
+            vec![
+                InitStep::Dir {
+                    path: Utf8PathBuf::from("/repo/spec/claims")
+                },
+                InitStep::Dir {
+                    path: Utf8PathBuf::from("/repo/.triad")
+                },
+                InitStep::TextFile {
+                    path: Utf8PathBuf::from("/repo/triad.toml"),
+                    contents: TriadConfig::bootstrap_toml()
+                        .expect("bootstrap toml should serialize"),
+                    force: true
+                },
+                InitStep::File {
+                    path: Utf8PathBuf::from("/repo/.triad/evidence.ndjson"),
+                    force: true
+                }
+            ]
+        );
     }
 }

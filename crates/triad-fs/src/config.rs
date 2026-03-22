@@ -117,6 +117,11 @@ impl TriadConfig {
         self,
         repo_root: impl AsRef<Utf8Path>,
     ) -> Result<CanonicalTriadConfig, TriadError> {
+        self.validate()?;
+        self.normalize(repo_root.as_ref())
+    }
+
+    fn validate(&self) -> Result<(), TriadError> {
         if self.version != 2 {
             return Err(TriadError::config_field("version", "must be 2"));
         }
@@ -124,10 +129,10 @@ impl TriadConfig {
         validate_non_empty_path("paths.claim_dir", &self.paths.claim_dir)?;
         validate_non_empty_path("paths.evidence_file", &self.paths.evidence_file)?;
         validate_non_empty_strings("snapshot.include", &self.snapshot.include)?;
-        validate_verify_commands(&self.verify.commands)?;
+        validate_verify_commands(&self.verify.commands)
+    }
 
-        let repo_root = repo_root.as_ref();
-
+    fn normalize(self, repo_root: &Utf8Path) -> Result<CanonicalTriadConfig, TriadError> {
         Ok(CanonicalTriadConfig {
             repo_root: repo_root.to_owned(),
             version: self.version,

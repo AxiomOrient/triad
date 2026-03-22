@@ -15,4 +15,4 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 toml.workspace = true
-triad-core = { version = "0.3.1", path = "../triad-core" }
+triad-core = { version = "0.3.2", path = "../triad-core" }

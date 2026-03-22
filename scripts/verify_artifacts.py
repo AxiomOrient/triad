@@ -267,10 +267,22 @@ def build_report() -> tuple[list[str], int, int]:
         fail_count += 1
 
     help_code, help_stdout, help_stderr = run_triad(binary, ["--help"], cwd=ROOT)
+    help_lines = help_stdout.splitlines()
+    try:
+        commands_start = help_lines.index("Commands:") + 1
+        options_start = help_lines.index("Options:")
+        command_names = {
+            line.split()[0]
+            for line in help_lines[commands_start:options_start]
+            if line.strip()
+        }
+    except ValueError:
+        command_names = set()
     if (
         help_code == 0
-        and all(token in help_stdout for token in ["init", "lint", "verify", "report"])
-        and all(token not in help_stdout for token in ["next", "work", "accept", "agent"])
+        and "--repo-root <PATH>" in help_stdout
+        and {"init", "lint", "verify", "report"}.issubset(command_names)
+        and {"next", "work", "accept", "agent"}.isdisjoint(command_names)
     ):
         lines.append(ok("CLI help matches current command surface"))
         ok_count += 1

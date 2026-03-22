@@ -1,8 +1,9 @@
+use std::collections::BTreeMap;
 use std::io::Write;
 
 use anyhow::{Result, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
-use triad_core::{Claim, ClaimId, TriadError, verify_claim};
+use triad_core::{Claim, ClaimId, EvidenceId, TriadError, verify_claim};
 use triad_fs::{
     CanonicalTriadConfig, ClaimMarkdownAdapter, CommandCapture, EvidenceNdjsonStore,
     SnapshotAdapter,
@@ -23,10 +24,10 @@ struct LoadedClaim {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ResolvedVerifyCommand {
+struct PlannedVerifyCommand {
     command: String,
     locator: Option<String>,
-    artifact_include: Vec<String>,
+    artifact_digests: BTreeMap<String, String>,
 }
 
 pub(crate) fn dispatch_command(
@@ -93,24 +94,8 @@ fn dispatch_verify(
     let claim_id = parse_claim_id(&args.claim)?;
     let claim = find_claim(&claims, &claim_id)?;
     let artifact_digests = SnapshotAdapter::collect(&config.repo_root, &config.snapshot.include)?;
-
-    let mut appended_ids = Vec::new();
-    for command in resolve_verify_commands(config, claim)? {
-        let evidence_artifacts =
-            SnapshotAdapter::filter(&artifact_digests, &command.artifact_include);
-        let evidence =
-            EvidenceNdjsonStore::append_new(&config.paths.evidence_file, move |evidence_id| {
-                CommandCapture::capture(
-                    &config.repo_root,
-                    &claim.claim,
-                    evidence_id,
-                    &command.command,
-                    command.locator.as_deref(),
-                    evidence_artifacts,
-                )
-            })?;
-        appended_ids.push(evidence.id.clone());
-    }
+    let command_plan = plan_verify_commands(config, claim, &artifact_digests)?;
+    let appended_ids = apply_verify_commands(config, &claim.claim, command_plan)?;
 
     let evidence = EvidenceNdjsonStore::read(&config.paths.evidence_file)?;
     let report = verify_claim(&claim.claim, &artifact_digests, &evidence);
@@ -181,10 +166,11 @@ fn find_claim<'a>(claims: &'a [LoadedClaim], claim_id: &ClaimId) -> Result<&'a L
         .ok_or_else(|| TriadError::InvalidState(format!("claim not found: {claim_id}")).into())
 }
 
-fn resolve_verify_commands(
+fn plan_verify_commands(
     config: &CanonicalTriadConfig,
     claim: &LoadedClaim,
-) -> Result<Vec<ResolvedVerifyCommand>> {
+    artifact_digests: &BTreeMap<String, String>,
+) -> Result<Vec<PlannedVerifyCommand>> {
     let claim_path = claim
         .path
         .strip_prefix(&config.repo_root)
@@ -196,17 +182,40 @@ fn resolve_verify_commands(
         .verify
         .commands
         .iter()
-        .map(|entry| ResolvedVerifyCommand {
+        .map(|entry| PlannedVerifyCommand {
             command: expand_template(entry.command(), &claim.claim.id, &claim_path),
             locator: entry
                 .locator()
                 .map(|locator| expand_template(locator, &claim.claim.id, &claim_path)),
-            artifact_include: entry
-                .artifacts()
-                .map(|artifacts| artifacts.to_vec())
-                .unwrap_or_else(|| config.snapshot.include.clone()),
+            artifact_digests: SnapshotAdapter::filter(
+                artifact_digests,
+                entry.artifacts().unwrap_or(&config.snapshot.include),
+            ),
         })
         .collect())
+}
+
+fn apply_verify_commands(
+    config: &CanonicalTriadConfig,
+    claim: &Claim,
+    command_plan: Vec<PlannedVerifyCommand>,
+) -> Result<Vec<EvidenceId>> {
+    let mut appended_ids = Vec::new();
+    for command in command_plan {
+        let evidence =
+            EvidenceNdjsonStore::append_new(&config.paths.evidence_file, move |evidence_id| {
+                CommandCapture::capture(
+                    &config.repo_root,
+                    claim,
+                    evidence_id,
+                    &command.command,
+                    command.locator.as_deref(),
+                    command.artifact_digests,
+                )
+            })?;
+        appended_ids.push(evidence.id.clone());
+    }
+    Ok(appended_ids)
 }
 
 fn expand_template(template: &str, claim_id: &ClaimId, claim_path: &str) -> String {

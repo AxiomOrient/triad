@@ -38,15 +38,25 @@ pub(crate) fn execute_cli_from_dir(
     stdout: &mut impl Write,
     working_dir: &Utf8PathBuf,
 ) -> Result<CliExit> {
-    match cli.command {
+    let Cli { repo_root, command } = cli;
+    let explicit_repo_root = repo_root
+        .as_ref()
+        .map(|path| resolve_repo_root_path(working_dir, path));
+
+    match command {
         Command::Init(args) => {
-            let repo_root = discover_repo_root(working_dir).unwrap_or_else(|| working_dir.clone());
+            let repo_root = explicit_repo_root.unwrap_or_else(|| {
+                discover_repo_root(working_dir).unwrap_or_else(|| working_dir.clone())
+            });
             init_scaffold(&repo_root, args.force).context("failed to create triad scaffold")?;
             dispatch_init(&repo_root, stdout)
         }
         command => {
-            let repo_root = discover_repo_root(working_dir)
-                .ok_or_else(|| anyhow::anyhow!("failed to discover triad repo root"))?;
+            let repo_root = match explicit_repo_root {
+                Some(path) => path,
+                None => discover_repo_root(working_dir)
+                    .ok_or_else(|| anyhow::anyhow!("failed to discover triad repo root"))?,
+            };
             let config = load_config(&repo_root)?;
             dispatch_command(&config, command, stdout)
         }
@@ -68,6 +78,14 @@ fn discover_repo_root(start: &Utf8PathBuf) -> Option<Utf8PathBuf> {
         .ancestors()
         .find(|path| path.join(CONFIG_FILE_NAME).is_file())
         .map(|path| path.to_owned())
+}
+
+fn resolve_repo_root_path(working_dir: &Utf8PathBuf, repo_root: &Utf8PathBuf) -> Utf8PathBuf {
+    if repo_root.is_absolute() {
+        repo_root.clone()
+    } else {
+        working_dir.join(repo_root)
+    }
 }
 
 fn load_config(repo_root: &Utf8PathBuf) -> Result<triad_fs::CanonicalTriadConfig> {

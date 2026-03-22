@@ -9,6 +9,15 @@
 | `triad verify --claim <CLAIM_ID> [--json]` | verify command 실행, evidence append, report 출력 |
 | `triad report [--claim <CLAIM_ID> \| --all] [--json]` | evidence + snapshot 기준 report 계산 |
 
+전역 옵션 `--repo-root <PATH>` 는 ancestor discovery를 우회하고 `PATH`를 repo root로 강제한다. 상대 경로는 현재 작업 디렉터리 기준으로 해석한다.
+
+명령 의미는 아래와 같다.
+
+- `lint` 는 claim 문서와 config 계약을 점검한다.
+- `verify` 는 verification command를 실행하고 evidence를 append한다.
+- `report` 는 verification command를 실행하지 않고 현재 evidence와 snapshot만으로 판정한다.
+- 최신 appended evidence를 반드시 반영한 report가 필요하면 `verify` 후 `report`를 순서대로 호출해야 한다.
+
 ## Output And Exit Codes
 
 - human output과 machine output은 같은 subcommand를 쓴다.
